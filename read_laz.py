@@ -29,6 +29,9 @@ def main():
     o3d_points = o3d.geometry.PointCloud()
     o3d_points.points = o3d.utility.Vector3dVector(np_points.T)
     # pcd = las.points[:3, :]
+    # voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(o3d_points,
+    #                                                            voxel_size=0.10)
+    o3d_points = o3d_points.voxel_down_sample(voxel_size=0.1)
     o3d.visualization.draw_geometries([o3d_points])
 
 
