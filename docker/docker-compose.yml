@@ -1,0 +1,20 @@
+version: "3.9"  # optional since v1.27.0
+services:
+    tree-clustering:
+      container_name: tree-clustering
+      image: tree-tls-analysis:ubuntu20.04
+      build: .
+      volumes:
+        - /media/shigemichi/HDD/dataset/:/media/shigemichi/HDD/dataset/
+        - ../:/root/pointcloud_analysis/
+      command: python3 registration.py 1002_hnorm.laz
+      environment:
+        - ROS_HOSTNAME=rviz
+        - ROS_MASTER_URI=http://master:11311
+        - DISPLAY
+        - QT_X11_NO_MITSHM=1
+      volumes:
+        - ${HOME}/.Xauthority:/root/.Xauthority
+        - /tmp/.X11-unix:/tmp/.X11-unix
+      tty: true
+      privileged: true

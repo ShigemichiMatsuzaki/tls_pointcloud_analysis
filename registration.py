@@ -1,10 +1,17 @@
 import os
-import pylas
-import open3d as o3d
-import numpy as np
 import argparse
 import math
+import copy
+
+import pylas
+
+import open3d as o3d
+import open3d.visualization.rendering as rendering
+
+import numpy as np
 import matplotlib.pyplot as plt
+
+from utils.ransac import ransac_cylinder
 
 
 def get_arguments():
@@ -14,6 +21,10 @@ def get_arguments():
     parser.add_argument('filename', type=str, help='Name of LAS/LAZ file')
     parser.add_argument(
         '--root', type=str, default='/media/shigemichi/HDD/dataset/', help='Name of LAS/LAZ file')
+    parser.add_argument(
+        '--radius-thresh', type=float, default=0.5, help='Threshold of the radius size of a tree')
+    parser.add_argument(
+        '--breast-height', type=float, default=1.3, help='Breast height')
 
     return parser.parse_args()
 
@@ -113,12 +124,17 @@ def main():
         voxel_size=0.1
     )
 
-    breast_height = 2.0
+    breast_height = 1.3
     dic = {"x": [-math.inf, math.inf],
            "y": [-math.inf, math.inf],
            "z": [breast_height-0.2, breast_height+0.2]}
 
+    o3d_points_2019_full = copy.deepcopy(o3d_points_2019)
     o3d_points_2019 = pass_through_filter(dic, o3d_points_2019)
+    cl, ind = o3d_points_2019.remove_statistical_outlier(
+        nb_neighbors=20, std_ratio=2.0)
+    o3d_points_2019 = o3d_points_2019.select_by_index(ind)
+
     with o3d.utility.VerbosityContextManager(
             o3d.utility.VerbosityLevel.Debug) as cm:
         labels = np.array(
@@ -129,22 +145,41 @@ def main():
     colors = plt.get_cmap("tab20")(
         labels / (max_label if max_label > 0 else 1))
     colors[labels < 0] = 0
-    o3d_points_2019.colors = o3d.utility.Vector3dVector(colors[:, :3])
-
-    # o3d_points_2014.paint_uniform_color([1, 0.706, 0])
-    # o3d_points_2019.paint_uniform_color([0, 0.651, 0.929])
+    # o3d_points_2019.colors = o3d.utility.Vector3dVector(colors)
 
     viewer = o3d.visualization.Visualizer()
     viewer.create_window()
+    viewer1 = o3d.visualization.Visualizer()
+    viewer1.create_window()
+    viewer1.add_geometry(o3d_points_2019_full)
+    for label in np.unique(labels):
+        if label == -1:
+            continue
+
+        cluster = np.asarray(o3d_points_2019.points)[labels == label]
+        (x, y, r), score = ransac_cylinder(cluster, num_iter=50, thresh=0.02)
+
+        print("{}: (x, y)=({}, {}), r={}, score={} ({}/{})".format(
+            label, x, y, r, score/cluster.shape[0], score, cluster.shape[0]))
+
+        if score/cluster.shape[0] >= 0.5 and r < args.radius_thresh:
+            mat = rendering.MaterialRecord()
+            temp_color = colors[labels == label, :3][0]
+            mat.base_color = [temp_color[0],
+                              temp_color[1], temp_color[2], 1]
+            mat.shader = "defaultLit"
+            cylinder = o3d.geometry.TriangleMesh.create_cylinder(r)
+            cylinder.compute_vertex_normals()
+            cylinder.translate([x, y, 2.0])
+
+            # viewer.add_geometry("sphere" + str(label), cylinder, mat)
+            viewer.add_geometry(cylinder)
+
     # viewer.add_geometry(o3d_points_2014)
     viewer.add_geometry(o3d_points_2019)
 
-    opt = viewer.get_render_option()
-    opt.show_coordinate_frame = True
-    opt.background_color = np.asarray([0.5, 0.5, 0.5])
     viewer.run()
     viewer.destroy_window()
-    # o3d.visualization.draw_geometries([source_down, target_down])
 
 
 if __name__ == '__main__':
