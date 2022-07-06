@@ -1,0 +1,11 @@
+name: pointcloud_analysis
+channels:
+        - open3d-admin
+        - anaconda
+        - conda-forge
+dependencies:
+        - python=3.9
+        - numpy
+        - open3d 
+        - matplotlib
+
