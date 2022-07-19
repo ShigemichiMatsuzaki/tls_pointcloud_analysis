@@ -3,22 +3,26 @@ import argparse
 import math
 import copy
 
-import pylas
+import laspy
 
 import open3d as o3d
 import open3d.visualization.rendering as rendering
 
 import numpy as np
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 from utils.ransac import ransac_cylinder
+from utils.io import import_laz_to_o3d_filter
+from utils.filters import preprocess_point_cloud, pass_through_filter
 
 
 def get_arguments():
     parser = argparse.ArgumentParser(
         description='Visualization and analysis of LAS/LAZ point cloud files')
 
-    parser.add_argument('filename', type=str, help='Name of LAS/LAZ file')
+    parser.add_argument('filename_tls', type=str, help='Name of LAS/LAZ file')
+    parser.add_argument('filename_als', type=str, help='Name of LAS/LAZ file')
     parser.add_argument(
         '--root', type=str, default='/media/shigemichi/HDD/dataset/', help='Name of LAS/LAZ file')
     parser.add_argument(
@@ -29,86 +33,17 @@ def get_arguments():
     return parser.parse_args()
 
 
-def preprocess_point_cloud(pcd_down, voxel_size):
-    print(":: Downsample with a voxel size %.3f." % voxel_size)
-    # pcd_down = pcd.voxel_down_sample(voxel_size)
-
-    radius_normal = voxel_size * 2
-    print(":: Estimate normal with search radius %.3f." % radius_normal)
-    pcd_down.estimate_normals(
-        o3d.geometry.KDTreeSearchParamHybrid(radius=radius_normal, max_nn=30))
-
-    radius_feature = voxel_size * 5
-    print(":: Compute FPFH feature with search radius %.3f." % radius_feature)
-    pcd_fpfh = o3d.pipelines.registration.compute_fpfh_feature(
-        pcd_down,
-        o3d.geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=100))
-    return pcd_down, pcd_fpfh
-
-
-def import_laz_to_o3d(filepath, voxel_size=0.1):
-    print(filepath)
-    las = pylas.read(filepath)
-
-    np_points = np.array(
-        [las['X'], las['Y'], las['Z']]) / 1000.0
-    np_points = np_points.T
-
-    mean = np_points.mean(axis=0)
-    mean[2] = 0
-    np_points -= mean
-
-    del las
-
-    o3d_points = o3d.geometry.PointCloud()
-    o3d_points.points = o3d.utility.Vector3dVector(np_points)
-    if voxel_size > 0:
-        o3d_points = o3d_points.voxel_down_sample(voxel_size=voxel_size)
-
-    return o3d_points
-
-
-def execute_global_registration(
-        source_down, target_down, source_fpfh, target_fpfh, voxel_size):
-    distance_threshold = voxel_size * 1.5
-    print(":: RANSAC registration on downsampled point clouds.")
-    print("   Since the downsampling voxel size is %.3f," % voxel_size)
-    print("   we use a liberal distance threshold %.3f." % distance_threshold)
-    result = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
-        source_down, target_down, source_fpfh, target_fpfh, True,
-        distance_threshold,
-        o3d.pipelines.registration.TransformationEstimationPointToPoint(False),
-        3, [
-            o3d.pipelines.registration.CorrespondenceCheckerBasedOnEdgeLength(
-                0.9),
-            o3d.pipelines.registration.CorrespondenceCheckerBasedOnDistance(
-                distance_threshold)
-        ], o3d.pipelines.registration.RANSACConvergenceCriteria(100000, 0.999))
-
-    return result
-
-
-def pass_through_filter(dic, pcd):
-
-    points = np.asarray(pcd.points)
-    colors = np.asarray(pcd.colors)
-
-    points[:, 0]
-    x_range = np.logical_and(
-        points[:, 0] >= dic["x"][0], points[:, 0] <= dic["x"][1])
-    y_range = np.logical_and(
-        points[:, 1] >= dic["y"][0], points[:, 1] <= dic["y"][1])
-    z_range = np.logical_and(
-        points[:, 2] >= dic["z"][0], points[:, 2] <= dic["z"][1])
-
-    pass_through_filter = np.logical_and(
-        x_range, np.logical_and(y_range, z_range))
-
-    pcd.points = o3d.utility.Vector3dVector(points[pass_through_filter])
-    if colors.size != 0:
-        pcd.colors = o3d.utility.Vector3dVector(colors[pass_through_filter])
-
-    return pcd
+def draw_registration_result(source, target, transformation):
+    source_temp = copy.deepcopy(source)
+    target_temp = copy.deepcopy(target)
+    source_temp.paint_uniform_color([1, 0.706, 0])
+    target_temp.paint_uniform_color([0, 0.651, 0.929])
+    source_temp.transform(transformation)
+    o3d.visualization.draw_geometries([source_temp, target_temp],
+                                      zoom=0.4559,
+                                      front=[0.6452, -0.3036, -0.7011],
+                                      lookat=[1.9892, 2.0208, 1.8945],
+                                      up=[-0.2779, -0.9482, 0.1556])
 
 
 def main():
@@ -116,71 +51,82 @@ def main():
     """
     args = get_arguments()
 
-    # o3d_points_2014 = import_laz_to_o3d(
-    #     os.path.join(args.root, 'Evo_TLS_2014_laz', args.filename)
-    # )
-    o3d_points_2019 = import_laz_to_o3d(
-        os.path.join(args.root, 'Evo_TLS_2019_laz', args.filename),
-        voxel_size=0.1
+    voxel_size = 0.6
+    source, mean_tls = import_laz_to_o3d_filter(
+        os.path.join(args.root, args.filename_tls),
+        voxel_size=0.1, 
+        chunked_read=True,
+        use_statistical_filter=True,
+        nb_neighbors=10,
+        std_ratio=15.0
+    )
+    target, _ = import_laz_to_o3d_filter(
+        os.path.join(args.root, args.filename_als),
+        # offset=mean_tls,
+        voxel_size=0.1, 
+        chunked_read=True,
+        use_statistical_filter=True,
+        nb_neighbors=10,
+        std_ratio=15.0
     )
 
-    breast_height = 1.3
-    dic = {"x": [-math.inf, math.inf],
-           "y": [-math.inf, math.inf],
-           "z": [breast_height-0.2, breast_height+0.2]}
+    dic = {'x': [-math.inf, math.inf],
+           'y': [-math.inf, math.inf],
+           'z': [0, 5]}
 
-    o3d_points_2019_full = copy.deepcopy(o3d_points_2019)
-    o3d_points_2019 = pass_through_filter(dic, o3d_points_2019)
-    cl, ind = o3d_points_2019.remove_statistical_outlier(
-        nb_neighbors=20, std_ratio=2.0)
-    o3d_points_2019 = o3d_points_2019.select_by_index(ind)
+    source_pt = pass_through_filter(dic, source)
+    target_pt = pass_through_filter(dic, target)
 
-    with o3d.utility.VerbosityContextManager(
-            o3d.utility.VerbosityLevel.Debug) as cm:
-        labels = np.array(
-            o3d_points_2019.cluster_dbscan(eps=0.20, min_points=15, print_progress=True))
+    source_down, source_fpfh = preprocess_point_cloud(source_pt, voxel_size)
+    target_down, target_fpfh = preprocess_point_cloud(target_pt, voxel_size)
 
-    max_label = labels.max()
-    print(f"point cloud has {max_label + 1} clusters")
-    colors = plt.get_cmap("tab20")(
-        labels / (max_label if max_label > 0 else 1))
-    colors[labels < 0] = 0
-    # o3d_points_2019.colors = o3d.utility.Vector3dVector(colors)
+    print(len(source_down.points))
+    print(len(target_down.points))
 
-    viewer = o3d.visualization.Visualizer()
-    viewer.create_window()
-    viewer1 = o3d.visualization.Visualizer()
-    viewer1.create_window()
-    viewer1.add_geometry(o3d_points_2019_full)
-    for label in np.unique(labels):
-        if label == -1:
-            continue
+    # demo_icp_pcds = o3d.data.DemoICPPointClouds()
+    # source = o3d.io.read_point_cloud(demo_icp_pcds.paths[0])
+    # target = o3d.io.read_point_cloud(demo_icp_pcds.paths[1])
 
-        cluster = np.asarray(o3d_points_2019.points)[labels == label]
-        (x, y, r), score = ransac_cylinder(cluster, num_iter=50, thresh=0.02)
+    # source_down, source_fpfh = preprocess_point_cloud(source, 0.1)
+    # target_down, target_fpfh = preprocess_point_cloud(target, 0.1)
 
-        print("{}: (x, y)=({}, {}), r={}, score={} ({}/{})".format(
-            label, x, y, r, score/cluster.shape[0], score, cluster.shape[0]))
+    source_down.estimate_normals(
+        search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=voxel_size*2, max_nn=30))
+    target_down.estimate_normals(
+        search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=voxel_size*2, max_nn=30))
+    source.estimate_normals(
+        search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.2, max_nn=30))
+    target.estimate_normals(
+        search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.2, max_nn=30))
 
-        if score/cluster.shape[0] >= 0.5 and r < args.radius_thresh:
-            mat = rendering.MaterialRecord()
-            temp_color = colors[labels == label, :3][0]
-            mat.base_color = [temp_color[0],
-                              temp_color[1], temp_color[2], 1]
-            mat.shader = "defaultLit"
-            cylinder = o3d.geometry.TriangleMesh.create_cylinder(r)
-            cylinder.compute_vertex_normals()
-            cylinder.translate([x, y, 2.0])
+    distance_threshold = voxel_size # * 1.5
+    result = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
+        source_down, target_down, source_fpfh, target_fpfh, True,
+        distance_threshold,
+        o3d.pipelines.registration.TransformationEstimationPointToPoint(False),
+        3,
+        [
+            o3d.pipelines.registration.CorrespondenceCheckerBasedOnEdgeLength(
+                0.9),
+            o3d.pipelines.registration.CorrespondenceCheckerBasedOnDistance(
+                distance_threshold)
+        ],
+        o3d.pipelines.registration.RANSACConvergenceCriteria(100000, 0.999))
+    print(result.transformation)
 
-            # viewer.add_geometry("sphere" + str(label), cylinder, mat)
-            viewer.add_geometry(cylinder)
+    distance_threshold = voxel_size * 0.4
+    print(":: Point-to-plane ICP registration is applied on original point")
+    print("   clouds to refine the alignment. This time we use a strict")
+    print("   distance threshold %.3f." % distance_threshold)
+    result = o3d.pipelines.registration.registration_generalized_icp(
+        source, target, distance_threshold, result.transformation,
+        estimation_method=o3d.pipelines.registration.TransformationEstimationForGeneralizedICP())
 
-    # viewer.add_geometry(o3d_points_2014)
-    viewer.add_geometry(o3d_points_2019)
+    print(len(source.points))
+    print(len(target.points))
 
-    viewer.run()
-    viewer.destroy_window()
-
+    print(result.transformation)
+    draw_registration_result(source, target, result.transformation)
 
 if __name__ == '__main__':
     main()

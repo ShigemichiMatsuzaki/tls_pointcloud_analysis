@@ -1,8 +1,13 @@
-import pylas
+import os
+import laspy as pylas
 import open3d as o3d
 import numpy as np
 import argparse
+import math
 
+from utils.filters import pass_through_filter
+# from utils.io import import_laz_to_o3d
+from utils.io import import_laz_to_o3d_filter
 
 def get_arguments():
     parser = argparse.ArgumentParser(
@@ -18,20 +23,17 @@ def main():
     """
     args = get_arguments()
     file_name = args.filename
-    las = pylas.read(file_name)
-    print(las.points.size)
-    print(las.point_format.dimension_names)
+    print(file_name)
 
-    np_points = np.array([las['X'], las['Y'], las['Z']]) / 1000.0
+    o3d_points, _ = import_laz_to_o3d_filter(
+        args.filename,
+        voxel_size=-0.1, 
+        chunked_read=True,
+        use_statistical_filter=True,
+        nb_neighbors=10,
+        std_ratio=15.0
+    )
 
-    del las
-
-    o3d_points = o3d.geometry.PointCloud()
-    o3d_points.points = o3d.utility.Vector3dVector(np_points.T)
-    # pcd = las.points[:3, :]
-    # voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(o3d_points,
-    #                                                            voxel_size=0.10)
-    o3d_points = o3d_points.voxel_down_sample(voxel_size=0.1)
     o3d.visualization.draw_geometries([o3d_points])
 
 
