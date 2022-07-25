@@ -13,13 +13,17 @@ import laspy
 import open3d as o3d
 import open3d.visualization.rendering as rendering
 import octomap
-from utils.octomap_utils import update_freespace_by_subtraction, visualize, calculate_metrics
+from utils.octomap_utils import update_freespace_by_subtraction, occupied_to_obstacles
 from registration import register_points, draw_registration_result
 
 from utils.io import import_laz_to_o3d_filter
 
 # TODO: Remove the process requiring `imgviz`
 import imgviz
+
+from thirdparty.rrt_algorithms.src.rrt.rrt_star import RRTStar
+from thirdparty.rrt_algorithms.src.search_space.search_space import SearchSpace
+from thirdparty.rrt_algorithms.src.utilities.plotting import Plot
 
 
 def get_arguments():
@@ -111,28 +115,44 @@ def main():
         resolution=args.octomap_resolution)
     occupied_als, empty_als = octree_als.extractPointCloud()
 
-    print(occupied_tls.shape, empty_tls.shape)
-    print(occupied_als.shape, empty_als.shape)
+    # Path planning by RRT
+    ## Define the search space
+    X_dimensions = np.array(
+        [(aabb_tls_min[0], aabb_tls_max[0]),
+        (aabb_tls_min[1], aabb_tls_max[1]),
+        (aabb_tls_min[1], aabb_tls_max[1])])  # dimensions of Search Space
 
-    TP, TN, FP, FN = calculate_metrics(
-        octree_tls, octree_als, aabb_tls_min, aabb_tls_max, args.octomap_resolution)
+    ## Add occupied voxels as obstacles
+    ## in the format "np.array([(x_min, y_min, z_min, x_max, y_max, z_max), ...])""
+    # obstacles = np.array(
+    #     [(20, 20, 20, 40, 40, 40), (20, 20, 60, 40, 40, 80), (20, 60, 20, 40, 80, 40), (60, 60, 20, 80, 80, 40),
+    #     (60, 20, 20, 80, 40, 40), (60, 20, 60, 80, 40, 80), (20, 60, 60, 40, 80, 80), (60, 60, 60, 80, 80, 80)]) // 10
+    obstacles = occupied_to_obstacles(occupied_tls, args.octomap_resolution)
+    x_init = (21, 20, 4)
+    x_goal = (19, -7, 23)
 
-    print(TP, TN, FP, FN)
-    print("accuracy: {}".format((TP + TN) / (TP + TN + FP + FN)))
-    print("precision: {}".format((TP) / (TP + FP)))
-    print("recall: {}".format((TP) / (TP + FN)))
-    # draw_registration_result(
-    #     o3d_points_als, o3d_points_tls, reg_result.transformation)
-    visualize(
-        occupied=occupied_tls,
-        empty=occupied_als,
-        K=K,
-        width=camera_info["width"],
-        height=camera_info["height"],
-        resolution=args.octomap_resolution,
-        aabb=(aabb_tls_min, aabb_tls_max),
-    )
+    Q = np.array([(0.5, 10), (1, 20), (3, 30), (7, 30)])  # length of tree edges
+    r = 1  # length of smallest edge to check for intersection with obstacles
+    max_samples = 65536  # max number of samples to take before timing out
+    rewire_count = 32  # optional, number of nearby branches to rewire
+    prc = 0.1  # probability of checking for a connection to goal
 
+    X = SearchSpace(X_dimensions, obstacles)
+    ## Initialize the object 
+    rrt = RRTStar(X, Q, x_init, x_goal, max_samples, r, prc, rewire_count)
+
+    ## Solve
+    path = rrt.rrt_star()
+
+    # plot
+    plot = Plot("rrt_star_tls")
+    plot.plot_tree(X, rrt.trees)
+    if path is not None:
+        plot.plot_path(X, path)
+    # plot.plot_obstacles(X, obstacles)
+    plot.plot_start(X, x_init)
+    plot.plot_goal(X, x_goal)
+    plot.draw(auto_open=True)
 
 if __name__ == '__main__':
     main()

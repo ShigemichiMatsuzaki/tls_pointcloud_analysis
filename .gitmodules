@@ -1,0 +1,3 @@
+[submodule "thirdparty/rrt_algorithms"]
+	path = thirdparty/rrt_algorithms
+	url = git@github.com:motion-planning/rrt-algorithms.git

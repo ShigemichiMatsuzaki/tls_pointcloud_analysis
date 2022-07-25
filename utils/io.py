@@ -5,6 +5,7 @@ from tqdm import tqdm
 import math
 from utils.filters import pass_through_filter
 
+
 def import_laz_to_o3d(filepath, voxel_size=0.1, chunked_read=True):
     print(filepath)
 
@@ -14,7 +15,8 @@ def import_laz_to_o3d(filepath, voxel_size=0.1, chunked_read=True):
         np_points = None
         chunk_size = 1_000_000
         with laspy.open(filepath) as f:
-            print(f.header.point_format[3].name, f.header.point_format[3].num_bits)
+            print(f.header.point_format[3].name,
+                  f.header.point_format[3].num_bits)
             with tqdm(total=f.header.point_count // chunk_size + 1) as pbar:
                 for las in tqdm(f.chunk_iterator(chunk_size)):
                     # print(las.x, las.y, las.z)
@@ -26,9 +28,8 @@ def import_laz_to_o3d(filepath, voxel_size=0.1, chunked_read=True):
                     if np_points is None:
                         np_points = np_points_tmp.T
                     else:
-                        np_points = np.concatenate((np_points, np_points_tmp.T), axis=0)
-            
-            pbar.close()
+                        np_points = np.concatenate(
+                            (np_points, np_points_tmp.T), axis=0)
 
     else:
         las = laspy.read(filepath)
@@ -37,7 +38,7 @@ def import_laz_to_o3d(filepath, voxel_size=0.1, chunked_read=True):
             [las['X'], las['Y'], las['Z']]) / 1000.0
         np_points = np_points.T
 
-    print(np_points.max(axis=0), np_points.min(axis=0)) 
+    print(np_points.max(axis=0), np_points.min(axis=0))
 
     o3d_points = o3d.geometry.PointCloud()
     o3d_points.points = o3d.utility.Vector3dVector(np_points)
@@ -49,19 +50,19 @@ def import_laz_to_o3d(filepath, voxel_size=0.1, chunked_read=True):
 
 
 def import_laz_to_o3d_filter(
-    filepath,
-    x_min=-math.inf,
-    y_min=-math.inf,
-    z_min=-math.inf,
-    x_max=math.inf,
-    y_max=math.inf,
-    z_max=math.inf,
-    offset=None,
-    voxel_size=0.1,
-    chunked_read=True,
-    use_statistical_filter=True,
-    nb_neighbors=15,
-    std_ratio=2.0):
+        filepath,
+        x_min=-math.inf,
+        y_min=-math.inf,
+        z_min=-math.inf,
+        x_max=math.inf,
+        y_max=math.inf,
+        z_max=math.inf,
+        offset=None,
+        voxel_size=0.1,
+        chunked_read=True,
+        use_statistical_filter=True,
+        nb_neighbors=15,
+        std_ratio=2.0):
     """Load LAZ file, convert it to Open3D, and apply filters
 
     Parameters
@@ -92,7 +93,7 @@ def import_laz_to_o3d_filter(
         The number of neighbors to consider in statistical filter
     std_ratio: `float`
         The threshold level based on the standard deviation of the average distances across the point cloud.    
-    
+
     Returns
     -------
     o3d_points: `o3d.geometry.PointCloud`
@@ -104,7 +105,7 @@ def import_laz_to_o3d_filter(
 
     o3d_points = import_laz_to_o3d(
         filepath,
-        voxel_size=voxel_size, 
+        voxel_size=voxel_size,
         chunked_read=chunked_read,
     )
 
@@ -124,7 +125,7 @@ def import_laz_to_o3d_filter(
     np_points = np.asarray(o3d_points.points)
     if offset is None:
         offset = np_points.mean(axis=0)
-        offset[2] = np_points[:,2].min()
+        offset[2] = np_points[:, 2].min()
 
     print(np_points)
     np_points -= offset

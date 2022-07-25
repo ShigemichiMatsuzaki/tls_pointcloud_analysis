@@ -20,6 +20,8 @@ RUN pip3 install \
     octomap-python \
     glooey \
     pyglet \
-    tqdm
+    tqdm \
+    Rtree \
+    plotly==5.9.0
 
 # RUN cd /tmp/ && git clone 

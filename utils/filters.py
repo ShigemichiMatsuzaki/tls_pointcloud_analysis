@@ -1,11 +1,18 @@
 import open3d as o3d
 import numpy as np
+import copy
 
-def preprocess_point_cloud(pcd_down, voxel_size=-1):
+
+def preprocess_point_cloud(pcd, voxel_size=-1):
+    """Calculate FPFH features for the given point cloud
+
+    """
     #print(":: Downsample with a voxel size %.3f." % voxel_size)
 
     if voxel_size > 0:
-        pcd_down = pcd_down.voxel_down_sample(voxel_size)
+        pcd_down = pcd.voxel_down_sample(voxel_size)
+    else:
+        pcd_down = copy.deepcopy(pcd)
 
     radius_normal = voxel_size * 2
     print(":: Estimate normal with search radius %.3f." % radius_normal)
@@ -18,6 +25,7 @@ def preprocess_point_cloud(pcd_down, voxel_size=-1):
         pcd_down,
         o3d.geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=100))
     return pcd_down, pcd_fpfh
+
 
 def pass_through_filter(dic, pcd):
 
@@ -38,6 +46,7 @@ def pass_through_filter(dic, pcd):
     new_pcd = o3d.geometry.PointCloud()
     new_pcd.points = o3d.utility.Vector3dVector(points[pass_through_filter])
     if colors.size != 0:
-        new_pcd.colors = o3d.utility.Vector3dVector(colors[pass_through_filter])
+        new_pcd.colors = o3d.utility.Vector3dVector(
+            colors[pass_through_filter])
 
     return new_pcd
