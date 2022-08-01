@@ -18,8 +18,6 @@ from registration import register_points, draw_registration_result
 
 from utils.io import import_laz_to_o3d_filter
 
-# TODO: Remove the process requiring `imgviz`
-import imgviz
 
 from thirdparty.rrt_algorithms.src.rrt.rrt_star import RRTStar
 from thirdparty.rrt_algorithms.src.search_space.search_space import SearchSpace
@@ -48,10 +46,6 @@ def main():
     """ Main function
     """
     args = get_arguments()
-
-    data = imgviz.data.arc2017()
-    camera_info = data["camera_info"]
-    K = np.array(camera_info["K"]).reshape(3, 3)
 
     o3d_points_tls, mean_tls = import_laz_to_o3d_filter(
         os.path.join(args.root, args.filename_tls),
@@ -153,6 +147,7 @@ def main():
     plot.plot_start(X, x_init)
     plot.plot_goal(X, x_goal)
     plot.draw(auto_open=True)
+
 
 if __name__ == '__main__':
     main()
