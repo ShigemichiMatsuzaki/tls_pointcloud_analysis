@@ -3,3 +3,5 @@ output/
 logs/
 CHM/
 test/
+tmp/
+**/*.png

@@ -9,6 +9,8 @@ from utils.filters import pass_through_filter
 # from utils.io import import_laz_to_o3d
 from utils.io import import_laz_to_o3d_filter
 
+import matplotlib.image as mpimg
+
 def get_arguments():
     parser = argparse.ArgumentParser(
         description='Visualization and analysis of LAS/LAZ point cloud files')
@@ -34,7 +36,16 @@ def main():
         std_ratio=15.0
     )
 
-    o3d.visualization.draw_geometries([o3d_points])
+    # o3d.visualization.draw_geometries([o3d_points])
+    print(type(o3d_points))
+    viewer = o3d.visualization.Visualizer()
+    viewer.create_window()
+    viewer.add_geometry(o3d_points)
+    opt = viewer.get_render_option()
+    opt.show_coordinate_frame = True
+    opt.background_color = np.asarray([0.5, 0.5, 0.5])
+    viewer.run()
+    viewer.destroy_window()
 
 
 if __name__ == '__main__':
