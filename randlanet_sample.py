@@ -1,6 +1,20 @@
 import os
 import open3d.ml as _ml3d
 import open3d.ml.torch as ml3d
+from open3d.ml.vis import Visualizer, LabelLUT
+from open3d.ml.datasets import SemanticKITTI
+import numpy as np
+
+from utils.io import import_laz_to_o3d_filter
+
+o3d_points, _ = import_laz_to_o3d_filter(
+    '/mnt/c/Users/aisl/Documents/dataset/Evo_HeliALS-TW_2021_euroSDR/1002.laz',
+    voxel_size=0.2, 
+    chunked_read=True,
+    use_statistical_filter=True,
+    nb_neighbors=10,
+    std_ratio=15.0
+)
 
 cfg_file = "../Open3D-ML/ml3d/configs/randlanet_semantickitti.yml"
 cfg = _ml3d.utils.Config.load_from_file(cfg_file)
@@ -22,12 +36,49 @@ if not os.path.exists(ckpt_path):
 # load the parameters.
 pipeline.load_ckpt(ckpt_path=ckpt_path)
 
-test_split = dataset.get_split("test")
-data = test_split.get_data(0)
+train_split = dataset.get_split("training")
+data = train_split.get_data(9)
+# test_split = dataset.get_split("test")
+# data = test_split.get_data(1)
+
+print(data)
+
+points = np.asarray(o3d_points.points)
+labels = np.ones((points.shape[0]))
+data['point'] = points
+data['feat'] = None
+data['label'] = labels
 
 # run inference on a single example.
 # returns dict with 'predict_labels' and 'predict_scores'.
 result = pipeline.run_inference(data)
 
-# evaluate performance on the test set; this will write logs to './logs'.
-pipeline.run_test()
+print(data['label'])
+
+kitti_labels = SemanticKITTI.get_label_to_names()
+print(kitti_labels)
+v = Visualizer()
+lut = LabelLUT()
+for val in sorted(kitti_labels.keys()):
+    lut.add_label(kitti_labels[val], val)
+v.set_lut("labels", lut)
+v.set_lut("pred", lut)
+
+# result['predict_labels'] += 1 # = (result['predict_labels'] + 1).astype(np.int32)
+# pred_label_r[0] = 0
+pred_label_r = (result['predict_labels'] + 1).astype(np.int32)
+# Fill "unlabeled" value because predictions have no 0 values.
+pred_label_r[0] = 0
+
+print(result)
+data = [{
+        "name": 'Pred',
+        "points": data['point'], # n x 3
+        "labels": data['label'], # n
+        "pred": pred_label_r, # n
+    }]
+print(np.unique(result['predict_labels']))
+v.visualize(data)
+# 
+# # evaluate performance on the test set; this will write logs to './logs'.
+# pipeline.run_test()
