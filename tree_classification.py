@@ -1,5 +1,6 @@
 import os
 import argparse
+import time
 
 # Basics
 import numpy as np
@@ -48,7 +49,7 @@ def main():
     o3d_points_als, _ = import_laz_to_o3d_filter(
         os.path.join(args.root, args.filename_als),
         # offset=mean_tls,
-        voxel_size=0.1,
+        voxel_size=-0.1,
         chunked_read=True,
         use_statistical_filter=True,
         nb_neighbors=10,
@@ -65,15 +66,22 @@ def main():
 
     cv2.imwrite("watershed_seg.png", tps.chm_segmenter.vis_img)
 
-    viewer = o3d.visualization.Visualizer()
-    viewer.create_window()
+    # viewer = o3d.visualization.Visualizer()
+    # viewer.create_window()
+
+    # opt = viewer.get_render_option()
+    # opt.show_coordinate_frame = True
+    # opt.background_color = np.asarray([0.5, 0.5, 0.5])
+    # opt.point_show_normal = True
+
     for t in tps.trees: 
-        viewer.add_geometry(t.points)
-    opt = viewer.get_render_option()
-    opt.show_coordinate_frame = True
-    opt.background_color = np.asarray([0.5, 0.5, 0.5])
-    viewer.run()
-    viewer.destroy_window()
+        t.classify_points()
+
+    # # for t in tps.trees: 
+    # viewer.add_geometry(tps[10].stem_points)
+    # viewer.run()
+
+    # viewer.destroy_window()
 
     # for t in tps.trees:
     #     print(t.points)

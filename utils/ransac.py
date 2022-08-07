@@ -1,5 +1,28 @@
 import numpy as np
 
+def find_model_inliers(
+    points: np.array,
+    model: str='cylinder',
+    params: dict={},
+    thresh: float=0.05
+):
+    if model == 'cylinder':
+        x = params['x']
+        y = params['y']
+        r = params['r']
+
+        # Evaluate
+        diffs = points[:, :2] - np.array([x, y])
+        diffs = np.abs(np.linalg.norm(diffs, axis=1) - r)
+
+        inlier_indices =  np.where(diffs < thresh)[0]
+    else:
+        print("Model {} is not supported.".format(model))
+        raise ValueError
+
+    return inlier_indices
+
+
 
 def ransac_cylinder(points: np.array, num_iter: int = 10, thresh: float = 0.05, max_radius=0.4):
     """Cylinder model fitting on the points by RANSAC
@@ -15,7 +38,7 @@ def ransac_cylinder(points: np.array, num_iter: int = 10, thresh: float = 0.05, 
 
     Returns
     -------
-    (x_b, y_b, r_b) : `tuple`
+    {'x': x_b, 'y': y_b, 'r': r_b} : `dict`
         Estimated parameters (coordinate of the center and the radius)
     best_score : `int`
         Number of inliers
@@ -42,13 +65,18 @@ def ransac_cylinder(points: np.array, num_iter: int = 10, thresh: float = 0.05, 
         r = np.sqrt((x - x1)**2 + (y - y1)**2)
 
         # Evaluate
-        diffs = points[:, :2] - np.array([x, y])
-        diffs = np.abs(np.linalg.norm(diffs, axis=1) - r)
+        # diffs = points[:, :2] - np.array([x, y])
+        # diffs = np.abs(np.linalg.norm(diffs, axis=1) - r)
+        inlier_indices = find_model_inliers(
+            points,
+            model='cylinder',
+            params={'x': x, 'y': y, 'r': r},
+            thresh=thresh)
 
-        score = (diffs < thresh).sum()
+        score = inlier_indices.shape[0]
 
         if score > best_score and r < max_radius:
             best_score = score
             x_b, y_b, r_b = x, y, r
 
-    return (x_b, y_b, r_b), best_score
+    return {'x': x_b, 'y': y_b, 'r': r_b}, best_score

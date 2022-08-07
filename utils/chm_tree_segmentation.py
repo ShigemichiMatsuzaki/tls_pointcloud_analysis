@@ -89,7 +89,8 @@ class CHMSegmenter(object):
 
         kernel = np.ones((3,3), np.uint8)
         # Denoising
-        img = cv.morphologyEx(self.img, cv.MORPH_CLOSE, kernel, iterations = 1)
+        # img = cv.morphologyEx(self.img, cv.MORPH_CLOSE, kernel, iterations = 1)
+        img = self.img
 
         # Extract local minima and use them as markers of segments
         # as sure foreground area
