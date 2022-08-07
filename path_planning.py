@@ -18,7 +18,6 @@ from registration import register_points, draw_registration_result
 
 from utils.io import import_laz_to_o3d_filter
 
-
 from thirdparty.rrt_algorithms.src.rrt.rrt_star import RRTStar
 from thirdparty.rrt_algorithms.src.search_space.search_space import SearchSpace
 from thirdparty.rrt_algorithms.src.utilities.plotting import Plot
@@ -137,16 +136,34 @@ def main():
 
     ## Solve
     path = rrt.rrt_star()
+    print(path)
+
+    points, indices = [], []
+    for i, p in enumerate(path):
+        points.append(p)
+
+        if i != 0:
+            indices.append([i-1, i])
+
+    lineset = o3d.geometry.LineSet()
+    lineset.points = o3d.utility.Vector3dVector(points)
+    lineset.lines = o3d.utility.Vector2iVector(indices)
 
     # plot
-    plot = Plot("rrt_star_tls")
-    plot.plot_tree(X, rrt.trees)
-    if path is not None:
-        plot.plot_path(X, path)
-    # plot.plot_obstacles(X, obstacles)
-    plot.plot_start(X, x_init)
-    plot.plot_goal(X, x_goal)
-    plot.draw(auto_open=True)
+    # plot = Plot("rrt_star_tls")
+    # plot.plot_tree(X, rrt.trees)
+    # if path is not None:
+    #     plot.plot_path(X, path)
+    # # plot.plot_obstacles(X, obstacles)
+    # plot.plot_start(X, x_init)
+    # plot.plot_goal(X, x_goal)
+    # plot.draw(auto_open=True)
+
+    # Visualize
+    # o3d_points_tls.colors = o3d.utility.Vector3dVector(np.random.uniform(0, 1, size=np.asarray(o3d_points_tls.points).shape))
+    # voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(o3d_points_tls,
+    #                                                             voxel_size=args.octomap_resolution)
+    o3d.visualization.draw_geometries([o3d_points_als, lineset])
 
 
 if __name__ == '__main__':
