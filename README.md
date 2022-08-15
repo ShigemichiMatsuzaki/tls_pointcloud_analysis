@@ -17,7 +17,6 @@
      python3 tree_classification.py <file1> <file2> --root <file root>
     ```
 
-
 # Requirements
 
 ## Environment
