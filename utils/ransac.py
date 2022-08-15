@@ -1,11 +1,33 @@
 import numpy as np
 
 def find_model_inliers(
-    points: np.array,
+    points: np.ndarray,
     model: str='cylinder',
     params: dict={},
     thresh: float=0.05
 ):
+    """Find inlier and outlier points of the given model out of the given point cloud
+
+    Parameters
+    ----------
+    points: `numpy.ndarray`
+        Point cloud
+    model: `str`
+        Shape model to evaluate
+    params: `dict`
+        Model parameters
+    thresh: `float`
+        Threshold of distance to the model to be considered as an inlier
+
+    Returns
+    -------
+    `dict`
+        Dictionary that stores the result
+        "inlier_indices": `numpy.ndarray`
+            Indices of the inliers
+        "outlier_indices": `numpy.ndarray`
+            Indices of the outliers
+    """
     if model == 'cylinder':
         x = params['x']
         y = params['y']
@@ -15,12 +37,13 @@ def find_model_inliers(
         diffs = points[:, :2] - np.array([x, y])
         diffs = np.abs(np.linalg.norm(diffs, axis=1) - r)
 
-        inlier_indices =  np.where(diffs < thresh)[0]
+        inlier_indices = np.where(diffs < thresh)[0]
+        outlier_indices = np.where(diffs >= thresh)[0]
     else:
         print("Model {} is not supported.".format(model))
         raise ValueError
 
-    return inlier_indices
+    return {"inlier_indices": inlier_indices, "outlier_indices": outlier_indices}
 
 
 
@@ -71,7 +94,7 @@ def ransac_cylinder(points: np.array, num_iter: int = 10, thresh: float = 0.05, 
             points,
             model='cylinder',
             params={'x': x, 'y': y, 'r': r},
-            thresh=thresh)
+            thresh=thresh)["inlier_indices"]
 
         score = inlier_indices.shape[0]
 

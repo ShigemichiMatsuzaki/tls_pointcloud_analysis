@@ -1,10 +1,7 @@
 import cv2 as cv
 import numpy as np
-from matplotlib import pyplot as plt
-import matplotlib
+import open3d as o3d
 from typing import Union
-
-from utils.filters import pass_through_filter
 
 # How to generate CHM using LAStools
 #   https://rapidlasso.com/2014/11/04/rasterizing-perfect-canopy-height-models-from-lidar/
@@ -129,6 +126,8 @@ class CHMSegmenter(object):
         self.vis_img = img
 
         for i in np.unique(markers):
+            if i == -1:
+                continue
             marker_i = np.asarray(markers==i, dtype=np.uint8)
             contour, _ = cv.findContours(marker_i, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
             self.contours.append(contour[0])
@@ -187,9 +186,35 @@ class CHMSegmenter(object):
         elif isinstance(map_coord, tuple):
             pixel_coord = (u, v)
         else:
-            pixel_coord = np.array([u, v])
+            pixel_coord = np.array([u, v], dtype=np.int32)
 
         return pixel_coord
+
+
+    def is_within_contour(self, contour, point_3d: np.ndarray):
+        """Check if the given 3D point is within a region defined by image contour
+        
+        """
+        img_point = self.map_to_pixel(point_3d)
+        is_within = (cv.pointPolygonTest(contour, (img_point[1].item(), img_point[0].item()), False) > 0)
+
+        return is_within
+
+
+    def crop_points_by_contour(self, label_id: int, o3d_points: o3d.geometry.PointCloud):
+        """
+        
+        """
+        points = []
+        for p in np.asarray(o3d_points.points):
+            if self.is_within_contour(self.contours[label_id], p):
+                points.append(p)
+
+        o3d_inlier_points = o3d.geometry.PointCloud()
+        if len(points) > 0:
+            o3d_inlier_points.points = o3d.utility.Vector3dVector(np.array(points))
+
+        return o3d_inlier_points
 
 
 def main():

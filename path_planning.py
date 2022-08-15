@@ -148,6 +148,7 @@ def main():
     lineset = o3d.geometry.LineSet()
     lineset.points = o3d.utility.Vector3dVector(points)
     lineset.lines = o3d.utility.Vector2iVector(indices)
+    lineset.paint_uniform_color(np.asarray([[0], [1], [1]]))
 
     # plot
     # plot = Plot("rrt_star_tls")
@@ -163,7 +164,27 @@ def main():
     # o3d_points_tls.colors = o3d.utility.Vector3dVector(np.random.uniform(0, 1, size=np.asarray(o3d_points_tls.points).shape))
     # voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(o3d_points_tls,
     #                                                             voxel_size=args.octomap_resolution)
-    o3d.visualization.draw_geometries([o3d_points_als, lineset])
+    # o3d.visualization.draw_geometries([o3d_points_als, lineset])
+
+    viewer = o3d.visualization.Visualizer()
+    viewer.create_window()
+
+
+    # for t in tps.trees: 
+    # viewer.add_geometry(tps[10].stem_points)
+    viewer.add_geometry(o3d_points_als)
+    viewer.add_geometry(lineset)
+
+    opt = viewer.get_render_option()
+    opt.show_coordinate_frame = True
+    opt.background_color = np.asarray([1, 1, 1])
+    opt.point_show_normal = False
+    opt.line_width = 50.0
+
+
+    viewer.run()
+    viewer.destroy_window()
+
 
 
 if __name__ == '__main__':
