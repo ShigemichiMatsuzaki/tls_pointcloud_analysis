@@ -34,7 +34,13 @@ class CHMSegmenter(object):
         self.vis_img = None
         self.contours = []
 
-    def find_local_maxima(self, img: np.ndarray, window_size: int=1, is_inverse: bool=False)->np.ndarray:
+
+    def find_local_maxima(
+        self,
+        img: np.ndarray,
+        window_size: int=1,
+        is_inverse: bool=False
+    ) -> np.ndarray:
         """Find local maxima in a grayscale image
         A local maximum is defined as a pixel that has a larger value 
         than any of its neighbors 
@@ -191,8 +197,20 @@ class CHMSegmenter(object):
         return pixel_coord
 
 
-    def is_within_contour(self, contour, point_3d: np.ndarray):
+    def is_within_contour(self, contour, point_3d: np.ndarray) -> bool:
         """Check if the given 3D point is within a region defined by image contour
+
+        Parameters
+        ----------
+        contour:
+            Contour information of the image segment.
+        point_3d: `numpy.ndarray`
+            Numpy array representing a 3D point [x, y, z].
+
+        Returns
+        -------
+        is_within: `bool`
+            True if the given point is within the contour
         
         """
         img_point = self.map_to_pixel(point_3d)
@@ -201,9 +219,25 @@ class CHMSegmenter(object):
         return is_within
 
 
-    def crop_points_by_contour(self, label_id: int, o3d_points: o3d.geometry.PointCloud):
-        """
-        
+    def crop_points_by_contour(
+        self, 
+        label_id: int, 
+        o3d_points: o3d.geometry.PointCloud
+    ) -> o3d.geometry.PointCloud:
+        """Crop 3D points using contour information of CHM
+
+        Parameters
+        ----------
+        label_id: `int`
+            Label ID of the segment by which the given point cloud is cropped 
+        o3d_points: `o3d.geometry.PointCloud`
+            Point cloud to crop
+
+        Returns
+        -------
+        o3d_inlier_points: `o3d.geometry.PointCloud`
+            Cropped point cloud
+
         """
         points = []
         for p in np.asarray(o3d_points.points):
