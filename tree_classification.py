@@ -13,7 +13,7 @@ import cv2
 
 from utils.io import import_laz_to_o3d_filter
 from utils.chm_tree_segmentation import CHMSegmenter
-from tree.tree_model import TreePointSegmener
+from tree.tree_model import TreeModel, TreePointSegmener
 
 def get_arguments():
     parser = argparse.ArgumentParser(
@@ -78,9 +78,12 @@ def main():
     opt.background_color = np.asarray([0.5, 0.5, 0.5])
     opt.point_show_normal = True
 
-    # for t in tps.trees: 
+    t_accum = o3d.geometry.PointCloud()
+    for t in tps.trees: 
+        t_accum += t.get_points()
+
     # viewer.add_geometry(tps[10].stem_points)
-    viewer.add_geometry(o3d_points_als)
+    viewer.add_geometry(t_accum)
     viewer.run()
 
     viewer.destroy_window()

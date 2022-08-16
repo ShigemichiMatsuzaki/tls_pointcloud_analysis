@@ -50,3 +50,52 @@ def pass_through_filter(dic, pcd):
             colors[pass_through_filter])
 
     return new_pcd
+
+def cylinder_model_filter(
+    points: np.ndarray,
+    params: dict={},
+    mode: str='on',
+    thresh: float=0.05,
+):
+    """Find inlier and outlier points of the given model out of the given point cloud
+
+    Parameters
+    ----------
+    points: `numpy.ndarray`
+        Point cloud
+    params: `dict`
+        Model parameters
+    mode: `str`
+        Mode of the filtering {'within', 'on'}
+            'within': Extract the points within the specified shape
+            'on': Extract the points on the contour of the specified shape with the distance threshold specified by `thresh`
+    thresh: `float`
+        Threshold of distance to the model to be considered as an inlier
+
+    Returns
+    -------
+    `dict`
+        Dictionary that stores the result
+        "inlier_indices": `numpy.ndarray`
+            Indices of the inliers
+        "outlier_indices": `numpy.ndarray`
+            Indices of the outliers
+    """
+    assert mode in ['within', 'on'], "Not supported mode '{mode}'"
+
+    x = params['x']
+    y = params['y']
+    r = params['r']
+
+    # Evaluate difference between each point and the cylinder center
+    diffs = points[:, :2] - np.array([x, y])
+
+    if mode == 'on':
+        diffs = np.abs(np.linalg.norm(diffs, axis=1) - r)
+    elif mode == 'within':
+        diffs = np.abs(np.linalg.norm(diffs, axis=1))
+
+    inlier_indices = np.where(diffs < thresh)[0]
+    outlier_indices = np.where(diffs >= thresh)[0]
+
+    return {"inlier_indices": inlier_indices, "outlier_indices": outlier_indices}

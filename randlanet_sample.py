@@ -4,8 +4,12 @@ import open3d.ml.torch as ml3d
 from open3d.ml.vis import Visualizer, LabelLUT
 from open3d.ml.datasets import SemanticKITTI
 import numpy as np
+import matplotlib.pyplot as plt
 
 from utils.io import import_laz_to_o3d_filter
+
+import umap
+import umap.plot
 
 o3d_points, _ = import_laz_to_o3d_filter(
     '/mnt/c/Users/aisl/Documents/dataset/Evo_HeliALS-TW_2021_euroSDR/1002.laz',
@@ -20,9 +24,9 @@ cfg_file = "../Open3D-ML/ml3d/configs/randlanet_semantickitti.yml"
 cfg = _ml3d.utils.Config.load_from_file(cfg_file)
 
 model = ml3d.models.RandLANet(**cfg.model)
-cfg.dataset['dataset_path'] = "/mnt/d/dataset/SemanticKITTI/"
-dataset = ml3d.datasets.SemanticKITTI(cfg.dataset.pop('dataset_path', None), **cfg.dataset)
-pipeline = ml3d.pipelines.SemanticSegmentation(model, dataset=dataset, device="gpu", **cfg.pipeline)
+# cfg.dataset['dataset_path'] = "/mnt/d/dataset/SemanticKITTI/"
+# dataset = ml3d.datasets.SemanticKITTI(cfg.dataset.pop('dataset_path', None), **cfg.dataset)
+pipeline = ml3d.pipelines.SemanticSegmentation(model, dataset=None, device="gpu", **cfg.pipeline)
 
 # download the weights.
 ckpt_folder = "./logs/"
@@ -36,24 +40,16 @@ if not os.path.exists(ckpt_path):
 # load the parameters.
 pipeline.load_ckpt(ckpt_path=ckpt_path)
 
-train_split = dataset.get_split("training")
-data = train_split.get_data(9)
-# test_split = dataset.get_split("test")
-# data = test_split.get_data(1)
-
-print(data)
-
+# train_split = dataset.get_split("training")
+# data = train_split.get_data(9)
 points = np.asarray(o3d_points.points)
 labels = np.ones((points.shape[0]))
-data['point'] = points
-data['feat'] = None
-data['label'] = labels
+
+data = {'point': points, 'feat': None, 'label': labels}
 
 # run inference on a single example.
 # returns dict with 'predict_labels' and 'predict_scores'.
 result = pipeline.run_inference(data)
-
-print(data['label'])
 
 kitti_labels = SemanticKITTI.get_label_to_names()
 print(kitti_labels)
@@ -70,7 +66,8 @@ pred_label_r = (result['predict_labels'] + 1).astype(np.int32)
 # Fill "unlabeled" value because predictions have no 0 values.
 pred_label_r[0] = 0
 
-print(result)
+feat = result['predict_features']
+print(feat.reshape((feat.shape[0] * feat.shape[2] * feat.shape[3], feat.shape[1])).shape)
 data = [{
         "name": 'Pred',
         "points": data['point'], # n x 3
@@ -78,7 +75,12 @@ data = [{
         "pred": pred_label_r, # n
     }]
 print(np.unique(result['predict_labels']))
-v.visualize(data)
+
+feat = feat.reshape((feat.shape[0] * feat.shape[2] * feat.shape[3], feat.shape[1]))
+mapper = umap.UMAP(verbose=True).fit(feat)
+ax = umap.plot.points(mapper)
+plt.show()
+# v.visualize(data)
 # 
 # # evaluate performance on the test set; this will write logs to './logs'.
-# pipeline.run_test()
+# pipeline.run_test()gg

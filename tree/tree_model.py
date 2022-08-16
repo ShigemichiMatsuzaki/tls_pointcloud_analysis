@@ -1,36 +1,78 @@
+from re import A
 import numpy as np
 import open3d as o3d
 import math
 import cv2
 
 from utils.chm_tree_segmentation import CHMSegmenter
-from utils.filters import pass_through_filter
+from utils.filters import pass_through_filter, cylinder_model_filter
 from utils.ransac import ransac_cylinder, find_model_inliers
+
+from typing import Optional, Union
 
 class TreeModel(object):
     """Class representing a tree"""
 
+    STEM = 0
+    NON_STEM = 1
+
+    # stem color: 239,210,30
+    # leaf color: 72,134,74
+    stem_color = np.array([239, 210, 30]) / 255
+    non_stem_color = np.array([72, 134, 74]) / 255
+
     def __init__(
         self, 
-        o3d_points: o3d.geometry.PointCloud,
-        classify_on_init: bool=False, 
-        breast_height: float=1.5
+        points: Optional[Union[o3d.geometry.PointCloud, dict]] = None,
+        labels: Optional[np.ndarray] = None,
     ):
-        self.o3d_points = o3d_points
-        self.is_initialized = False
-        self.radius = 0.10
-        self.normal_angle_tresh = 5 # [rad]
-        self.breast_height = breast_height
+        """Initializatoin of the class by giving point cloud(s)
 
-        if classify_on_init:
-            self.initialize()
+        Parameters
+        ----------
+        points: `Union[o3d.geometry.PointCloud, dict]`
+            Points of an individual tree.
+            If you provide it as `o3d.geometry.PointCloud`, also set `labels`.
+            `dict` type argument should have keys 'stem' and 'non_stem'.
+        labels: `Optional[np.ndarray]`
+            Point-wise labels indicating the type {'stem', 'non_stem'} of each point.
+            It is required if `o3d_points` is `o3d.geometry.PointCloud`.
+        
+        """
+        assert (points is None or isinstance(points, dict) or labels is not None), \
+            "When provide `o3d_points` as `o3d.geometry.PointCloud`, please also give me point labels."
 
-        # Classified points
-        self.stem_points = None
-        self.non_stem_points = None
-        self.bottom_point = np.array([0., 0.])
 
-        # Metrics
+        # Initialize points and labels
+        if points is None:
+            self.o3d_points = o3d.geometry.PointCloud()
+            self.labels = np.empty(np.asarray(self.o3d_points.points).shape)
+        elif isinstance(points, dict):
+            # Classified points
+            stem_labels = np.full(len(points['stem'].points), self.STEM, dtype=np.int32)
+            non_stem_labels = np.full(len(points['non_stem'].points), self.NON_STEM, dtype=np.int32)
+
+            points['stem'].paint_uniform_color(self.stem_color)
+            points['non_stem'].paint_uniform_color(self.non_stem_color)
+
+            self.o3d_points = points['stem'] + points['non_stem']
+            self.labels = np.concatenate((stem_labels, non_stem_labels))
+
+            # Initialize the coordinate point
+            np_stem_points = np.asarray(points['stem'].points)
+            self.bottom_point = np_stem_points.mean(axis=0)
+            self.bottom_point[2] = np_stem_points.min(axis=0)[2]
+        else:
+
+            colors = np.asarray(points.colors)
+            colors[labels == self.STEM] = np.asarray(self.stem_color)
+            colors[labels == self.NON_STEM] = np.asarray(self.non_stem_color)
+            points.colors = o3d.utility.Vector3dVector(colors)
+
+            self.o3d_points = points
+            self.labels = labels
+
+
 
     def initialize(self):
         """Initialize a tree model (calculate normals, classes, measurements etc.?)
@@ -41,68 +83,7 @@ class TreeModel(object):
             Points of a cluster representing a tree
 
         """
-        self.classify_points()
         self.is_initialized = True
-
-#    def classify_points(self, visualize=False):
-#        """
-#        
-#        """
-#        print("Classify points")
-#        if self.o3d_points is None:
-#            raise ValueError
-#
-#        # Calculate normal for each point
-#        self.o3d_points.estimate_normals(
-#            o3d.geometry.KDTreeSearchParamHybrid(radius=self.radius * 2, max_nn=20))
-#        self.o3d_points.normalize_normals()
-#
-#        # Classify the points by the angle of the normal
-#        vertical_axis = np.array([0.0, 0.0, 1.0])
-#        dot_scores = np.dot(np.asarray(self.o3d_points.normals), vertical_axis)
-#
-#        self.stem_points = self.o3d_points.select_by_index(np.where(np.abs(dot_scores) < 0.10)[0], invert=False)
-#        self.non_stem_points = self.o3d_points.select_by_index(np.where(np.abs(dot_scores) < 0.10)[0], invert=True)
-#
-#        # RANSAC-based cylinder fitting on 'stem_points'
-#        ## Extract points within a certain height range
-#        z_min = np.asarray(self.stem_points.points).min(axis=0)[2]
-#        breast_height_point = pass_through_filter(
-#            {"x": [-math.inf, math.inf],
-#             "y": [-math.inf, math.inf],
-#             "z": [z_min + self.breast_height, z_min + self.breast_height + 10.2]},
-#             self.stem_points)
-#
-#        if np.asarray(breast_height_point.points).size < 10:
-#            return
-#
-#        ## DBCAN clustering
-#        cluster_labels = np.array(
-#            breast_height_point.cluster_dbscan(eps=0.2, min_points=10))
-#
-#        ## Cylinder fitting on each cluster
-#        for l in range(cluster_labels.max()+1):
-#        # for cluster in clusters:
-#            params, _ = ransac_cylinder(
-#                np.asarray(breast_height_point.points)[cluster_labels == l],
-#                num_iter=100
-#            )
-#
-#            results = find_model_inliers(
-#                np.asarray(self.o3d_points.points),
-#                model='cylinder',
-#                params=params
-#            )
-#
-#            o3d_inlier_points = o3d.geometry.PointCloud()
-#            o3d_inlier_points.points = o3d.utility.Vector3dVector(
-#                np.asarray(self.o3d_points.points)[results["inliers_indices"]])
-#
-#            # o3d.visualization.draw_geometries([breast_height_point])
-#            if visualize:
-#                o3d.visualization.draw_geometries([o3d_inlier_points])
-#        
-#        # Paint stem and non-stem parts in different colors
 
 
     def get_metrics(self):
@@ -110,8 +91,13 @@ class TreeModel(object):
 
         pass
 
+
     def get_points(self):
         return self.o3d_points
+
+    
+    def visualize(self):
+        o3d.visualization.draw_geometries([self.o3d_points])
 
 
 class TreePointSegmener(object):
@@ -121,7 +107,7 @@ class TreePointSegmener(object):
         self,
         o3d_points: o3d.geometry.PointCloud,
         chm_segmenter: CHMSegmenter,
-        breast_height: float=2.5
+        breast_height: float=3.
     ):
         
         """Initialize the class with o3d points and CHMSegmenter
@@ -136,11 +122,15 @@ class TreePointSegmener(object):
         self.normal_angle_tresh = 5 # [rad]
         self.breast_height = breast_height
 
+
     def segment_trees(
         self,
         o3d_points: o3d.geometry.PointCloud,
-        visualize=False):
-        """Classify given points into individual trees
+        visualize=False
+    ) -> list:
+        """Classify given points into individual trees.
+        The input point cloud is expected to be roughly segmented into 
+        an individual tree by CHM.
 
         Parameters
         ----------
@@ -179,7 +169,6 @@ class TreePointSegmener(object):
         #
         # RANSAC-based cylinder fitting on 'stem_points'
         #
-
         ## Extract points within a certain height range
         # z_min = np.asarray(stem_candidate_points.points).min(axis=0)[2]
         z_min = np.asarray(o3d_points.points).min(axis=0)[2]
@@ -190,15 +179,10 @@ class TreePointSegmener(object):
              "z": [z_min + self.breast_height-0.3, z_min + self.breast_height + 0.3]},
              stem_candidate_points)
 
-        breast_height_point.paint_uniform_color([0, 0, 1])
-        stem_candidate_points.paint_uniform_color([0, 1, 0])
-
         # If there are not enough points, quit
         if np.asarray(breast_height_point.points).size < 10:
             print("Don't have enough points")
-            self.trees = []
-            return self.trees
-
+            return trees
 
         ## DBCAN clustering to cluster the points that potentially include
         #  multiple tree trunks into individual trees
@@ -206,35 +190,61 @@ class TreePointSegmener(object):
             breast_height_point.cluster_dbscan(eps=0.2, min_points=5))
         print(cluster_labels)
 
-        o3d_points.paint_uniform_color(np.array([72,134,74]) / 255)
         ## Cylinder fitting on each cluster
         for l in range(cluster_labels.max()+1):
             print("Cluster {}".format(l))
+
         # for cluster in clusters:
             params, _ = ransac_cylinder(
                 np.asarray(breast_height_point.points)[cluster_labels == l],
                 num_iter=100
             )
 
-            results = find_model_inliers(
+            # Accumulate stem points
+            results = cylinder_model_filter(
                 np.asarray(o3d_points.points),
-                model='cylinder',
                 params=params,
+                mode='on',
                 thresh=0.1
             )
 
-            o3d_inlier_points = o3d.geometry.PointCloud()
-            o3d_inlier_points.points = o3d.utility.Vector3dVector(
+            o3d_stem_points = o3d.geometry.PointCloud()
+            o3d_stem_points.points = o3d.utility.Vector3dVector(
                 np.asarray(o3d_points.points)[results["inlier_indices"]])
-            colors = np.asarray(o3d_points.colors)
-            colors[results["inlier_indices"]] = np.array([255,255,0]) / 255
+            
+            # TODO: Likelihood of the stem should be tested
+            #  - Connectivity
+            #  - Size
+            #  - Point distribution (deviation) around the detected stem?
 
-            o3d_points.colors = o3d.utility.Vector3dVector(colors)
+            if len(o3d_stem_points.points) == 0:
+                continue
 
-        # stem color: 239,210,30
-        # leaf color: 72,134,74
-        if visualize:
-            o3d.visualization.draw_geometries([o3d_points])
+            # Accumulate non-stem regions by growing regions from the stem points
+            non_stem_candidate = np.asarray(o3d_points.points)[results["outlier_indices"]]
+            results = cylinder_model_filter(
+                non_stem_candidate,
+                params=params,
+                mode='within',
+                thresh=2.5
+            )
+            non_stem_points = non_stem_candidate[results["inlier_indices"]]
+
+            o3d_non_stem_points = o3d.geometry.PointCloud()
+            o3d_non_stem_points.points = o3d.utility.Vector3dVector(non_stem_points)
+
+            # o3d.visualization.draw_geometries([o3d_stem_points + o3d_non_stem_points])
+
+            tree = TreeModel({"stem": o3d_stem_points, "non_stem": o3d_non_stem_points})
+
+            # Append the tree model
+            trees.append(
+                tree
+            )
+
+            print(len(o3d_stem_points.points), len(o3d_non_stem_points.points))
+
+        return trees
 
 
     def do_segmentation(self):
@@ -279,13 +289,13 @@ class TreePointSegmener(object):
             if bbx_point.is_empty():
                 continue
 
-            self.segment_trees(bbx_point, visualize=True)
+            trees = self.segment_trees(bbx_point, visualize=True)
 
             # tree = TreeModel(bbx_point, classify_on_init=False)
-            # self.trees.append(tree)
-
+            self.trees += trees
             ## Check each point whether it's within the segment
         
+
     def __getitem__(self, index):
         """
         
