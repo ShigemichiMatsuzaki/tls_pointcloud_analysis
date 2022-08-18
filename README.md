@@ -42,10 +42,17 @@ pip3 install -r requirements.txt
 ### Point cloud analysis
 - `laspy` (NOT `pylas`)
 - `open3d`
-- `octomap-python`
+
 ### Visualization
 - `glooey`
 - `pyglet`
 - `tqdm`
+
+### A library that you need source build
+- `semantic-octomap-python`
+  ```
+  cd thirdparty/octomap-python/.
+  python setup.py build_ext
+  ```
 
 # TODO

@@ -1,3 +1,6 @@
 [submodule "thirdparty/rrt_algorithms"]
 	path = thirdparty/rrt_algorithms
 	url = git@github.com:ShigemichiMatsuzaki/rrt-algorithms.git
+[submodule "thirdparty/octomap-python"]
+	path = thirdparty/octomap-python
+	url = git@github.com:ShigemichiMatsuzaki/octomap-python.git
