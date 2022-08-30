@@ -3,12 +3,12 @@ import numpy as np
 import open3d as o3d
 import math
 import cv2
+from typing import Optional, Union
 
 from utils.chm_tree_segmentation import CHMSegmenter
 from utils.filters import pass_through_filter, cylinder_model_filter
 from utils.ransac import ransac_cylinder, find_model_inliers
 
-from typing import Optional, Union
 
 class TreeModel(object):
     """Class representing a tree"""
@@ -92,9 +92,19 @@ class TreeModel(object):
         pass
 
 
-    def get_points(self):
-        return self.o3d_points
+    def get_points(self, label=None):
+        if label is None:
+            return self.o3d_points
+        elif label in [self.STEM, self.NON_STEM]:
+            ret_points = o3d.geometry.PointCloud()
+            ret_points.points = o3d.utility.Vector3dVector(
+                np.asarray(self.o3d_points.points)[self.labels == label])
+            ret_points.colors = o3d.utility.Vector3dVector(
+                np.asarray(self.o3d_points.colors)[self.labels == label])
 
+            return ret_points
+        else:
+            raise ValueError
     
     def visualize(self):
         o3d.visualization.draw_geometries([self.o3d_points])
@@ -122,6 +132,15 @@ class TreePointSegmener(object):
         self.normal_angle_tresh = 5 # [rad]
         self.breast_height = breast_height
 
+    def __getitem__(self, index):
+        if index > len(self.trees):
+            raise IndexError
+
+        return self.trees[index]
+
+    def __iter__(self):
+       for t in self.trees:
+          yield t
 
     def segment_trees(
         self,
@@ -296,11 +315,3 @@ class TreePointSegmener(object):
             ## Check each point whether it's within the segment
         
 
-    def __getitem__(self, index):
-        """
-        
-        """
-        if index > len(self.trees):
-            raise IndexError
-
-        return self.trees[index]

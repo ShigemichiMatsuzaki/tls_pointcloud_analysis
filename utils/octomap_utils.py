@@ -19,7 +19,7 @@ def labeled_scene_widget(scene, label):
 
 
 def visualize(
-    occupied, empty, K, width, height, resolution, aabb
+    occupied, empty, K, width, height, resolution, aabb, colors=None
 ):
     print("Make window")
     window = pyglet.window.Window(
@@ -65,7 +65,7 @@ def visualize(
 
     print("Rendering 1")
     geom = trimesh.voxel.ops.multibox(
-        occupied, pitch=resolution, colors=[1.0, 0, 0, 0.5]
+        occupied, pitch=resolution, colors=colors# [1.0, 0, 0, 0.5]
     )
     scene = trimesh.Scene(camera=camera, geometry=[bbox, geom, camera_marker])
     scene.camera_transform = camera_transform
