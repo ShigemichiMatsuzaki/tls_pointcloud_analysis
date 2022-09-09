@@ -62,7 +62,8 @@ def import_laz_to_o3d_filter(
         chunked_read=True,
         use_statistical_filter=True,
         nb_neighbors=15,
-        std_ratio=2.0):
+        std_ratio=2.0,
+        color=None):
     """Load LAZ file, convert it to Open3D, and apply filters
 
     Parameters
@@ -127,9 +128,12 @@ def import_laz_to_o3d_filter(
         offset = np_points.mean(axis=0)
         offset[2] = np_points[:, 2].min()
 
-    print(np_points)
+    # print(np_points)
     np_points -= offset
-    print(np_points)
+    # print(np_points)
     # o3d_points.points = o3d.utility.Vector3dVector(np_points)
+
+    if isinstance(color, list) or isinstance(color, tuple):
+        o3d_points.paint_uniform_color(color)
 
     return o3d_points, offset

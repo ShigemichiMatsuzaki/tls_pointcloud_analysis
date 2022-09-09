@@ -5,6 +5,8 @@ import trimesh
 import trimesh.transformations as tf
 import trimesh.viewer
 import numpy as np
+import octomap
+from typing import Union
 
 # From https://github.com/wkentaro/octomap-python/blob/main/examples/insertPointCloud.py
 
@@ -19,7 +21,16 @@ def labeled_scene_widget(scene, label):
 
 
 def visualize(
-    occupied, empty, K, width, height, resolution, aabb, colors=None
+    occupied: np.ndarray,
+    empty: np.ndarray,
+    K: np.ndarray,
+    width: float,
+    height: float,
+    resolution: float,
+    aabb: np.ndarray,
+    colors=None,
+    path=None,
+    candidate_points=None,
 ):
     print("Make window")
     window = pyglet.window.Window(
@@ -65,9 +76,36 @@ def visualize(
 
     print("Rendering 1")
     geom = trimesh.voxel.ops.multibox(
-        occupied, pitch=resolution, colors=colors# [1.0, 0, 0, 0.5]
+        occupied, pitch=resolution,
+        colors=(colors if colors is not None else [0.5, 0.5, 0.5, 0.5])
     )
-    scene = trimesh.Scene(camera=camera, geometry=[bbox, geom, camera_marker])
+
+    geometry=[bbox, geom, camera_marker]
+
+    path_geom = []
+    if path is not None:
+        path_segments = []
+        for i in range(len(path)-1):
+            path_segments.append([path[i], path[i+1]])
+        
+        path_segments = np.asarray(path_segments)
+        print(path_segments)
+        path_segments = trimesh.load_path(path_segments)
+
+        start_point_sphere = trimesh.primitives.Sphere(radius=0.5, center=path[0])
+        end_point_sphere = trimesh.primitives.Sphere(radius=0.5, center=path[-1])
+
+        path_geom = [path_segments, start_point_sphere, end_point_sphere]
+
+    # Show candidate points
+    if candidate_points is not None:
+        for p in candidate_points:
+            point_sphere = trimesh.primitives.Sphere(radius=1.0, center=p)
+            geometry.append(point_sphere)
+
+    scene = trimesh.Scene(
+        camera=camera,
+        geometry=geometry+path_geom)
     scene.camera_transform = camera_transform
     hbox.add(labeled_scene_widget(scene, label="occupied"))
 
@@ -75,7 +113,7 @@ def visualize(
     geom = trimesh.voxel.ops.multibox(
         empty, pitch=resolution, colors=[0.5, 0.5, 0.5, 0.5]
     )
-    scene = trimesh.Scene(camera=camera, geometry=[bbox, geom, camera_marker])
+    scene = trimesh.Scene(camera=camera, geometry=[bbox, geom, camera_marker]+path_geom)
     scene.camera_transform = camera_transform
     hbox.add(labeled_scene_widget(scene, label="empty"))
 
@@ -93,7 +131,9 @@ def update_freespace_by_subtraction(octree, aabb_min, aabb_max, resolution):
                     np.array([x+offset, y+offset, z+offset]))
                 node = octree.search(key)
                 try:
-                    label = octree.isNodeOccupied(node)
+                    if not octree.isNodeOccupied(node):
+                        octree.updateNode(key, False)
+
                 except Exception as e:
                     octree.updateNode(key, False)
 
@@ -142,8 +182,8 @@ def calculate_metrics(reference, prediction, aabb_min, aabb_max, resolution):
                 node2 = prediction.search(key2)
 
                 try:
-                    label1 = reference.isNodeOccupied(node1)
-                    label2 = prediction.isNodeOccupied(node2)
+                    label1 = node1.getOccupancy() > 0.5
+                    label2 = node2.getOccupancy() > 0.5
 
                     if label1 and label2:
                         TP += 1
@@ -153,9 +193,7 @@ def calculate_metrics(reference, prediction, aabb_min, aabb_max, resolution):
                         FP += 1
                     elif (not label1) and (not label2):
                         TN += 1
-
                 except Exception as e:
-                    print("Voxel out of the bbox was accessed")
                     continue
 
     return TP, TN, FP, FN
@@ -186,3 +224,34 @@ def occupied_to_obstacles(occupied, resolution):
         obstacles.append(coord)
 
     return np.array(obstacles)
+
+
+def filter_free_voxels(free_voxels, octree: Union[octomap.OcTree, octomap.SemanticOcTree]):
+    """Filter invalid free voxels
+
+    Parameters
+    ----------
+    free_voxels: `numpy.ndarray`
+        Numpy array storing voxel locations n x 3
+    octree: Union[octomap.OcTree, octomap.SemanticOcTree]
+        OcTree
+
+    Returns
+    -------
+    free_voxels_filtered: `numpy.ndarray`
+        Filtered array
+    
+    """
+    indices = []
+    num_filtered = 0
+    for i in range(free_voxels.shape[0]):
+        node = octree.search(free_voxels[i], depth=0)
+        try:
+            _ = octree.isNodeOccupied(node)
+            indices.append(i)
+        except:
+            num_filtered += 1
+            
+    print("Filtered voxels: {}".format(num_filtered))
+
+    return free_voxels[indices]

@@ -15,6 +15,7 @@ class TreeModel(object):
 
     STEM = 0
     NON_STEM = 1
+    GROUND = 2
 
     # stem color: 239,210,30
     # leaf color: 72,134,74
@@ -72,8 +73,6 @@ class TreeModel(object):
             self.o3d_points = points
             self.labels = labels
 
-
-
     def initialize(self):
         """Initialize a tree model (calculate normals, classes, measurements etc.?)
 
@@ -85,12 +84,10 @@ class TreeModel(object):
         """
         self.is_initialized = True
 
-
     def get_metrics(self):
         """Get tree metrics"""
 
         pass
-
 
     def get_points(self, label=None):
         if label is None:
@@ -105,7 +102,7 @@ class TreeModel(object):
             return ret_points
         else:
             raise ValueError
-    
+
     def visualize(self):
         o3d.visualization.draw_geometries([self.o3d_points])
 
@@ -199,7 +196,7 @@ class TreePointSegmener(object):
              stem_candidate_points)
 
         # If there are not enough points, quit
-        if np.asarray(breast_height_point.points).size < 10:
+        if np.asarray(breast_height_point.points).size < 7:
             print("Don't have enough points")
             return trees
 
@@ -252,14 +249,10 @@ class TreePointSegmener(object):
             o3d_non_stem_points = o3d.geometry.PointCloud()
             o3d_non_stem_points.points = o3d.utility.Vector3dVector(non_stem_points)
 
-            # o3d.visualization.draw_geometries([o3d_stem_points + o3d_non_stem_points])
-
             tree = TreeModel({"stem": o3d_stem_points, "non_stem": o3d_non_stem_points})
 
             # Append the tree model
-            trees.append(
-                tree
-            )
+            trees.append(tree)
 
             print(len(o3d_stem_points.points), len(o3d_non_stem_points.points))
 
