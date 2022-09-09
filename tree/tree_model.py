@@ -3,18 +3,19 @@ import numpy as np
 import open3d as o3d
 import math
 import cv2
+from typing import Optional, Union
 
 from utils.chm_tree_segmentation import CHMSegmenter
 from utils.filters import pass_through_filter, cylinder_model_filter
 from utils.ransac import ransac_cylinder, find_model_inliers
 
-from typing import Optional, Union
 
 class TreeModel(object):
     """Class representing a tree"""
 
     STEM = 0
     NON_STEM = 1
+    GROUND = 2
 
     # stem color: 239,210,30
     # leaf color: 72,134,74
@@ -72,8 +73,6 @@ class TreeModel(object):
             self.o3d_points = points
             self.labels = labels
 
-
-
     def initialize(self):
         """Initialize a tree model (calculate normals, classes, measurements etc.?)
 
@@ -85,17 +84,25 @@ class TreeModel(object):
         """
         self.is_initialized = True
 
-
     def get_metrics(self):
         """Get tree metrics"""
 
         pass
 
+    def get_points(self, label=None):
+        if label is None:
+            return self.o3d_points
+        elif label in [self.STEM, self.NON_STEM]:
+            ret_points = o3d.geometry.PointCloud()
+            ret_points.points = o3d.utility.Vector3dVector(
+                np.asarray(self.o3d_points.points)[self.labels == label])
+            ret_points.colors = o3d.utility.Vector3dVector(
+                np.asarray(self.o3d_points.colors)[self.labels == label])
 
-    def get_points(self):
-        return self.o3d_points
+            return ret_points
+        else:
+            raise ValueError
 
-    
     def visualize(self):
         o3d.visualization.draw_geometries([self.o3d_points])
 
@@ -122,6 +129,15 @@ class TreePointSegmener(object):
         self.normal_angle_tresh = 5 # [rad]
         self.breast_height = breast_height
 
+    def __getitem__(self, index):
+        if index > len(self.trees):
+            raise IndexError
+
+        return self.trees[index]
+
+    def __iter__(self):
+       for t in self.trees:
+          yield t
 
     def segment_trees(
         self,
@@ -180,7 +196,7 @@ class TreePointSegmener(object):
              stem_candidate_points)
 
         # If there are not enough points, quit
-        if np.asarray(breast_height_point.points).size < 10:
+        if np.asarray(breast_height_point.points).size < 7:
             print("Don't have enough points")
             return trees
 
@@ -233,14 +249,10 @@ class TreePointSegmener(object):
             o3d_non_stem_points = o3d.geometry.PointCloud()
             o3d_non_stem_points.points = o3d.utility.Vector3dVector(non_stem_points)
 
-            # o3d.visualization.draw_geometries([o3d_stem_points + o3d_non_stem_points])
-
             tree = TreeModel({"stem": o3d_stem_points, "non_stem": o3d_non_stem_points})
 
             # Append the tree model
-            trees.append(
-                tree
-            )
+            trees.append(tree)
 
             print(len(o3d_stem_points.points), len(o3d_non_stem_points.points))
 
@@ -296,11 +308,3 @@ class TreePointSegmener(object):
             ## Check each point whether it's within the segment
         
 
-    def __getitem__(self, index):
-        """
-        
-        """
-        if index > len(self.trees):
-            raise IndexError
-
-        return self.trees[index]

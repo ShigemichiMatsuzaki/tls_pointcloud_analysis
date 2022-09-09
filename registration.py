@@ -89,6 +89,10 @@ def global_registration(
 
     """
     distance_threshold = voxel_size * 1.5
+    print(":: Global registration vis RANSAC")
+    print("   distance threshold %.3f." % distance_threshold)
+    print()
+
     result = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
         source, target, source_fpfh, target_fpfh, True,
         distance_threshold,
@@ -108,8 +112,10 @@ def global_registration(
 def local_registration(
         source: o3d.geometry.PointCloud,
         target: o3d.geometry.PointCloud,
-        transformation,
-        voxel_size):
+        transformation: np.ndarray,
+        voxel_size: float,
+        robust_kernel: str='tukey',
+        robust_thresh: float=0.3):
     """ICP-based registration for refinement
 
     Parameters
@@ -122,6 +128,10 @@ def local_registration(
         Resulting transformation
     voxel_size: `float`
         Voxel size of the point cloud
+    robust_kernel: `str`
+        Type of robust kernel to use ['tukey', 'huber']
+    robust_thresh: `float`
+        Threshold of the robust kernel
 
     Results
     -------
@@ -131,12 +141,36 @@ def local_registration(
     """
 
     distance_threshold = voxel_size * 0.4
-    print(":: Point-to-plane ICP registration is applied on original point")
+    print(":: Generalized ICP registration is applied on original point")
     print("   clouds to refine the alignment. This time we use a strict")
     print("   distance threshold %.3f." % distance_threshold)
-    result = o3d.pipelines.registration.registration_generalized_icp(
-        source, target, distance_threshold, transformation,
-        estimation_method=o3d.pipelines.registration.TransformationEstimationForGeneralizedICP())
+
+    if robust_kernel == 'tukey':
+        loss = o3d.pipelines.registration.TukeyLoss(k=robust_thresh)
+        print("   Robust kernel : {}".format(robust_kernel))
+        print("       Threshold : {}.".format(robust_thresh))
+    elif robust_kernel == 'huber':
+        loss = o3d.pipelines.registration.HuberLoss(k=robust_thresh)
+        print("   Robust kernel : {}".format(robust_kernel))
+        print("       Threshold : {}.".format(robust_thresh))
+    elif robust_kernel == 'none':
+        print("   Robust kernel : none")
+    else:
+        print("[local_registration] Kernel type {} is not supported. ".format(robust_kernel))
+        print("Supported: ['tukey', 'huber', 'none']")
+        raise ValueError
+
+    # result = o3d.pipelines.registration.registration_icp(
+    #     source, target, distance_threshold, transformation,
+    #     o3d.pipelines.registration.TransformationEstimationPointToPlane(loss))
+    if robust_kernel == 'none':
+        result = o3d.pipelines.registration.registration_generalized_icp(
+            source, target, distance_threshold, transformation,
+            estimation_method=o3d.pipelines.registration.TransformationEstimationForGeneralizedICP())
+    else:
+        result = o3d.pipelines.registration.registration_generalized_icp(
+            source, target, distance_threshold, transformation,
+            estimation_method=o3d.pipelines.registration.TransformationEstimationForGeneralizedICP(loss))
 
     return result
 
@@ -145,7 +179,10 @@ def register_points(
         source: o3d.geometry.PointCloud,
         target: o3d.geometry.PointCloud,
         voxel_size,
-        voxel_size_down):
+        voxel_size_down,
+        use_global_registration=True,
+        robust_kernel: str='tukey',
+        robust_thresh: float=0.3):
     """Register point clouds through RANSAC-based global registration
     and ICP-based local refinement.
 
@@ -159,6 +196,12 @@ def register_points(
         Size of the voxel size of the original point cloud
     voxel_size_down: `float`
         Size of the voxel size for global registration
+    use_global_registration: `bool`
+        If True, use RANSAC-based global registration for pose initialization
+    robust_kernel: `str`
+        Type of robust kernel to use ['tukey', 'huber']
+    robust_thresh: `float`
+        Threshold of the robust kernel
 
     Return
     ------
@@ -168,7 +211,7 @@ def register_points(
     """
     dic = {'x': [-math.inf, math.inf],
            'y': [-math.inf, math.inf],
-           'z': [0, 5]}
+           'z': [0, 4]}
 
     source_pt = pass_through_filter(dic, source)
     target_pt = pass_through_filter(dic, target)
@@ -188,15 +231,20 @@ def register_points(
         search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=voxel_size*2, max_nn=30))
 
     # Global registration
-    result = global_registration(
-        source_down, target_down, source_fpfh, target_fpfh, voxel_size_down)
+    if use_global_registration:
+        init_transform = global_registration(
+            source_down, target_down, source_fpfh, target_fpfh, voxel_size_down).transformation
+    else:
+        init_transform = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], dtype=np.float64)
 
     # Local registration as refinement
     result = local_registration(
         source, target,
-        result.transformation,
-        # np.asarray([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]),
-        voxel_size)
+        init_transform,
+        voxel_size,
+        robust_kernel=robust_kernel,
+        robust_thresh=robust_thresh,
+    )
 
     return result
 
