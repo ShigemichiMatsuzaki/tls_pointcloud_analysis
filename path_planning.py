@@ -7,6 +7,7 @@ import copy
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from typing import Union
 
 # Point cloud and OctoMap
 import laspy
@@ -21,6 +22,136 @@ from utils.io import import_laz_to_o3d_filter
 from thirdparty.rrt_algorithms.src.rrt.rrt_star import RRTStar
 from thirdparty.rrt_algorithms.src.search_space.search_space import SearchSpace
 from thirdparty.rrt_algorithms.src.utilities.plotting import Plot
+
+def generate_candidate_points_from_free_voxels(
+    free_voxels: np.ndarray, octree: Union[octomap.OcTree, octomap.SemanticOcTree],
+    x_min=None, x_max=None, y_min=None, y_max=None, z_min=None, z_max=None,
+)->np.ndarray:
+    """Get candidate points for start/goal of path planning
+
+    Parameters
+    ----------
+    free_voxels: `numpy.ndarray`
+        Numpy array storing voxel locations n x 3
+    octree: Union[octomap.OcTree, octomap.SemanticOcTree]
+        OcTree
+    x_min: `float`
+        Minimum value of x
+    x_max: `float`
+        Maximum value of x
+    y_min: `float`
+        Minimum value of y
+    y_max: `float`
+        Maximum value of y
+    z_min: `float`
+        Minimum value of z
+    z_max: `float`
+        Maximum value of z
+
+    Returns
+    -------
+    candidate_points: `numpy.ndarray`
+        Numpy array storing candidates
+   
+    """
+    candidate_points = []
+
+    xyz_min, xyz_max = octree.getMetricMin(), octree.getMetricMax()
+    if x_max is None:
+        x_max = xyz_max[0]
+    if y_max is None:
+        y_max = xyz_max[1]
+    if z_max is None:
+        z_max = xyz_max[2]
+    if x_min is None:
+        x_min = xyz_min[0]
+    if y_min is None:
+        y_min = xyz_min[1]
+    if z_min is None:
+        z_min = xyz_min[2]
+
+    print(xyz_min, xyz_max)
+
+    for p in free_voxels:
+        node = octree.search(p, depth=0)
+        if (p[0] > x_max) or (p[0] < x_min) or (p[1] > y_max) or (p[1] < y_min) or (p[2] > z_max) or (p[2] < z_min):
+            continue
+
+        candidate_points.append(p)
+
+        try:
+            if node.getOccupancy() > 0.5:
+                continue
+
+            candidate_points.append(p)
+        except:
+            continue
+
+    print("candidate point num: {}".format(len(candidate_points)))
+    return np.array(candidate_points)
+
+
+def is_path_feasible(
+    octree: Union[octomap.OcTree, octomap.SemanticOcTree],
+    path: list
+) -> bool:
+    """Check the feasibility of the path in the given voxel map
+
+    Parameters
+    ----------
+    octree: `Union[octomap.OcTree, octomap.SemanticOcTree]`
+        Voxel map
+    path: `list`
+        List of tuples of 3D point coordinate (x, y, z)
+
+    Returns
+    -------
+    is_feasible: `bool`
+        True if the path is feasible, i.e., it does not collide with any occupied voxels
+    
+    """
+    for i in range(len(path)-1):
+        if not is_line_feasible(octree, path[i], path[i+1]):
+            return False
+
+    return True
+
+
+def is_line_feasible(
+    octree: Union[octomap.OcTree, octomap.SemanticOcTree],
+    start_point: tuple,
+    end_point: tuple
+) -> bool:
+    """Check the feasibility of the line in the given voxel map
+
+    Parameters
+    ----------
+    octree: `Union[octomap.OcTree, octomap.SemanticOcTree]`
+        Voxel map
+    start_point: `tuple`
+        Tuple of 3D point coordinate (x, y, z) of the start point of the line
+    end_point: `tuple`
+        Tuple of 3D point coordinate (x, y, z) of the end point of the line
+
+    Returns
+    -------
+    is_feasible: `bool`
+        True if the line is feasible, i.e., it does not collide with any occupied voxels
+    
+    """
+    np_start_point = np.asarray(start_point, dtype=np.float64)
+    np_end_point = np.asarray(end_point, dtype=np.float64)
+
+    # Unit vector from the start to the end
+    v = np_end_point - np_start_point
+    v /= np.linalg.norm(v)
+
+    end = np.array([0,0,0], dtype=np.float64)
+    octree.castRay(np_start_point, v, end)
+
+    print(end, np_end_point)
+
+    return True
 
 
 def get_arguments():
@@ -121,10 +252,11 @@ def main():
     #     [(20, 20, 20, 40, 40, 40), (20, 20, 60, 40, 40, 80), (20, 60, 20, 40, 80, 40), (60, 60, 20, 80, 80, 40),
     #     (60, 20, 20, 80, 40, 40), (60, 20, 60, 80, 40, 80), (20, 60, 60, 40, 80, 80), (60, 60, 60, 80, 80, 80)]) // 10
     obstacles = occupied_to_obstacles(occupied_tls, args.octomap_resolution)
+
     x_init = (21, 20, 4)
     x_goal = (19, -7, 23)
 
-    Q = np.array([(0.5, 10), (1, 20), (3, 30), (7, 30)])  # length of tree edges
+    Q = np.array([(0.5, 30), (1, 40), (3, 50), (7, 50), (10, 30)])  # length of tree edges
     r = 1  # length of smallest edge to check for intersection with obstacles
     max_samples = 65536  # max number of samples to take before timing out
     rewire_count = 32  # optional, number of nearby branches to rewire
