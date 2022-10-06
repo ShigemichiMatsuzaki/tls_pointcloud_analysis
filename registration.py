@@ -2,8 +2,8 @@ import os
 import argparse
 import math
 import copy
+from typing import Optional
 
-import laspy
 
 import open3d as o3d
 import open3d.visualization.rendering as rendering
@@ -15,6 +15,7 @@ from tqdm import tqdm
 from utils.ransac import ransac_cylinder
 from utils.io import import_laz_to_o3d_filter
 from utils.filters import preprocess_point_cloud, pass_through_filter
+from utils.visualization import visualize
 
 
 def get_arguments():
@@ -104,7 +105,7 @@ def global_registration(
             o3d.pipelines.registration.CorrespondenceCheckerBasedOnDistance(
                 distance_threshold)
         ],
-        o3d.pipelines.registration.RANSACConvergenceCriteria(1000000, 0.9999))
+        o3d.pipelines.registration.RANSACConvergenceCriteria(10000000, 0.9999))
 
     return result
 
@@ -114,6 +115,8 @@ def local_registration(
         target: o3d.geometry.PointCloud,
         transformation: np.ndarray,
         voxel_size: float,
+        icp_type: str='gicp',
+        distance_threshold: float=-1.0,
         robust_kernel: str='tukey',
         robust_thresh: float=0.3):
     """ICP-based registration for refinement
@@ -128,6 +131,8 @@ def local_registration(
         Resulting transformation
     voxel_size: `float`
         Voxel size of the point cloud
+    icp_type: `str`
+        Type of ICP. ['point2point', 'point2plane', 'gicp']
     robust_kernel: `str`
         Type of robust kernel to use ['tukey', 'huber']
     robust_thresh: `float`
@@ -140,7 +145,9 @@ def local_registration(
 
     """
 
-    distance_threshold = voxel_size * 0.4
+    if distance_threshold < 0:
+        distance_threshold = voxel_size * 0.4
+
     print(":: Generalized ICP registration is applied on original point")
     print("   clouds to refine the alignment. This time we use a strict")
     print("   distance threshold %.3f." % distance_threshold)
@@ -163,14 +170,30 @@ def local_registration(
     # result = o3d.pipelines.registration.registration_icp(
     #     source, target, distance_threshold, transformation,
     #     o3d.pipelines.registration.TransformationEstimationPointToPlane(loss))
-    if robust_kernel == 'none':
-        result = o3d.pipelines.registration.registration_generalized_icp(
+    if icp_type == 'gicp':
+        if robust_kernel == 'none':
+            result = o3d.pipelines.registration.registration_generalized_icp(
+                source, target, distance_threshold, transformation,
+                estimation_method=o3d.pipelines.registration.TransformationEstimationForGeneralizedICP())
+        else:
+            result = o3d.pipelines.registration.registration_generalized_icp(
+                source, target, distance_threshold, transformation,
+                estimation_method=o3d.pipelines.registration.TransformationEstimationForGeneralizedICP(loss))
+    elif icp_type == 'point2point':
+        result = o3d.pipelines.registration.registration_icp(
             source, target, distance_threshold, transformation,
-            estimation_method=o3d.pipelines.registration.TransformationEstimationForGeneralizedICP())
+            o3d.pipelines.registration.TransformationEstimationPointToPoint())
+    elif icp_type == 'point2plane':
+        if robust_kernel == 'none':
+            result = o3d.pipelines.registration.registration_icp(
+                source, target, distance_threshold, transformation,
+                o3d.pipelines.registration.TransformationEstimationPointToPlane())
+        else:
+            result = o3d.pipelines.registration.registration_icp(
+                source, target, distance_threshold, transformation,
+                o3d.pipelines.registration.TransformationEstimationPointToPlane(loss))
     else:
-        result = o3d.pipelines.registration.registration_generalized_icp(
-            source, target, distance_threshold, transformation,
-            estimation_method=o3d.pipelines.registration.TransformationEstimationForGeneralizedICP(loss))
+        raise ValueError
 
     return result
 
@@ -178,11 +201,15 @@ def local_registration(
 def register_points(
         source: o3d.geometry.PointCloud,
         target: o3d.geometry.PointCloud,
-        voxel_size,
-        voxel_size_down,
-        use_global_registration=True,
+        voxel_size: float,
+        voxel_size_down: float,
+        use_global_registration: bool=True,
+        registration_mode: int=0,
         robust_kernel: str='tukey',
-        robust_thresh: float=0.3):
+        robust_thresh: float=0.3,
+        z_min: float=-np.inf,
+        z_max: float=np.inf,
+        init_transform: Optional[np.ndarray]=None):
     """Register point clouds through RANSAC-based global registration
     and ICP-based local refinement.
 
@@ -198,6 +225,8 @@ def register_points(
         Size of the voxel size for global registration
     use_global_registration: `bool`
         If True, use RANSAC-based global registration for pose initialization
+    registration_mode: `int`
+        0: Global and local, 1: local only, 2: global only
     robust_kernel: `str`
         Type of robust kernel to use ['tukey', 'huber']
     robust_thresh: `float`
@@ -211,7 +240,7 @@ def register_points(
     """
     dic = {'x': [-math.inf, math.inf],
            'y': [-math.inf, math.inf],
-           'z': [0, 4]}
+           'z': [z_min, z_max]}
 
     source_pt = pass_through_filter(dic, source)
     target_pt = pass_through_filter(dic, target)
@@ -231,20 +260,37 @@ def register_points(
         search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=voxel_size*2, max_nn=30))
 
     # Global registration
-    if use_global_registration:
+    if registration_mode == 0: # Global and local
         init_transform = global_registration(
             source_down, target_down, source_fpfh, target_fpfh, voxel_size_down).transformation
+
+        result = local_registration(
+            source, target,
+            init_transform,
+            voxel_size,
+            robust_kernel=robust_kernel,
+            robust_thresh=robust_thresh,)
+    elif registration_mode == 1:
+        if init_transform is None:
+            init_transform = np.array([
+                [1, 0, 0, 0], 
+                [0, 1, 0, 0], 
+                [0, 0, 1, 0], 
+                [0, 0, 0, 1]], dtype=np.float64)
+
+        result = local_registration(
+            source, target,
+            init_transform,
+            voxel_size,
+            robust_kernel=robust_kernel,
+            robust_thresh=robust_thresh,)
+    elif registration_mode == 2:
+        result = global_registration(
+            source_down, target_down, source_fpfh, target_fpfh, voxel_size_down)
     else:
-        init_transform = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], dtype=np.float64)
+        raise ValueError
 
     # Local registration as refinement
-    result = local_registration(
-        source, target,
-        init_transform,
-        voxel_size,
-        robust_kernel=robust_kernel,
-        robust_thresh=robust_thresh,
-    )
 
     return result
 

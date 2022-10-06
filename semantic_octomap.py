@@ -201,18 +201,18 @@ def main():
     """
     """
 
-    # visualize(
-    #     occupied=empty_als_filtered, #occupied_als,
-    #     empty=empty_als,
-    #     K=K,
-    #     width=width,
-    #     height=height,
-    #     resolution=args.octomap_resolution,
-    #     aabb=(aabb_als_min, aabb_als_max),
-    #     colors= None,#occupied_als_color,
-    #     path=None,
-    #     # candidate_points=candidate_points,
-    # )
+    visualize(
+        occupied=occupied_als, #occupied_als,
+        empty=empty_als,
+        K=K,
+        width=width,
+        height=height,
+        resolution=args.octomap_resolution,
+        aabb=(aabb_als_min, aabb_als_max),
+        colors=occupied_als_color,
+        path=None,
+        # candidate_points=candidate_points,
+    )
 
 
 if __name__ == '__main__':

@@ -1,3 +1,4 @@
+import os
 import cv2 as cv
 import numpy as np
 import open3d as o3d
@@ -25,10 +26,16 @@ class CHMSegmenter(object):
             Offset of the map in Y axis
         
         """
+        if not os.path.exists(img_name):
+            print("[CHMSegmenter] File {} does not exist.".format(img_name))
+            raise FileNotFoundError
+
         self.img = cv.imread(img_name, cv.IMREAD_GRAYSCALE)
+        self.H, self.W = self.img.shape[0], self.img.shape[1]
         self.length_per_pixel = length_per_pixel
         self.offset_x, self.offset_y = offset_x, offset_y
 
+        self.segments = None
         self.markers = None
         self.sure_fg = None
         self.vis_img = None
@@ -85,7 +92,8 @@ class CHMSegmenter(object):
         -------
         dict: `dict`
             Dictionary that stores the following values:
-                "markers": Array with the same size as input storing marker labels
+                "segments": Array with the same size as input storing segment labels
+                "markers": Array with the same size as input storing seed marker labels
                 "sure_fg": Mask image of sure foreground regions
                 "vis_img": Visualization image
         """
@@ -120,25 +128,26 @@ class CHMSegmenter(object):
 
         # 'cv.watershed()' expects input of 8UC3
         img = cv.cvtColor(img, cv.COLOR_GRAY2BGR)
-        markers = cv.watershed(img, markers)
+        segments = cv.watershed(img, markers)
 
         # Visualization
-        img[markers == -1] = [0,0,255] # Draw borders
+        img[segments == -1] = [0,0,255] # Draw borders
         img[sure_fg == 255] = [0,255,255] # Draw seed points
 
         # Store the calculated values in the class variables
+        self.segments = segments
         self.markers = markers
         self.sure_fg = sure_fg
         self.vis_img = img
 
-        for i in np.unique(markers):
+        for i in np.unique(segments):
             if i == -1:
                 continue
-            marker_i = np.asarray(markers==i, dtype=np.uint8)
+            marker_i = np.asarray(segments==i, dtype=np.uint8)
             contour, _ = cv.findContours(marker_i, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
             self.contours.append(contour[0])
 
-        return {"markers": markers, "sure_fg": sure_fg, "vis_img": img}
+        return {"segments": segments, "markers": markers, "sure_fg": sure_fg, "vis_img": img}
 
     def pixel_to_map(
         self, pixel: Union[list, tuple, np.array]
@@ -157,7 +166,7 @@ class CHMSegmenter(object):
         
         """
         x = pixel[0] * self.length_per_pixel + self.offset_x
-        y = pixel[1] * self.length_per_pixel + self.offset_y
+        y = (self.H-pixel[1]) * self.length_per_pixel + self.offset_y
 
         if isinstance(pixel, list):
             map_coord = [x, y]
@@ -185,7 +194,7 @@ class CHMSegmenter(object):
         
         """
         u = int((map_coord[0] - self.offset_x) / self.length_per_pixel)
-        v = int((map_coord[1] - self.offset_y) / self.length_per_pixel)
+        v = int(-((map_coord[1] - self.offset_y) / self.length_per_pixel - self.H))
 
         if isinstance(map_coord, list):
             pixel_coord = [u, v]

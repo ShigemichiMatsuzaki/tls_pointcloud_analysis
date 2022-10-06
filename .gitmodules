@@ -4,3 +4,6 @@
 [submodule "thirdparty/octomap-python"]
 	path = thirdparty/octomap-python
 	url = git@github.com:ShigemichiMatsuzaki/octomap-python.git
+[submodule "thirdparty/TEASER-plusplus"]
+	path = thirdparty/TEASER-plusplus
+	url = git@github.com:MIT-SPARK/TEASER-plusplus.git
