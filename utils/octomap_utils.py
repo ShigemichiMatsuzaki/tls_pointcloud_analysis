@@ -77,7 +77,7 @@ def visualize(
     print("Rendering 1")
     geom = trimesh.voxel.ops.multibox(
         occupied, pitch=resolution,
-        colors=(colors if colors is not None else [0.5, 0.5, 0.5, 0.5])
+        colors=(colors if colors is not None else [0.5, 0.5, 0.5, 0.7])
     )
 
     geometry=[bbox, geom, camera_marker]
@@ -100,7 +100,7 @@ def visualize(
     # Show candidate points
     if candidate_points is not None:
         for p in candidate_points:
-            point_sphere = trimesh.primitives.Sphere(radius=1.0, center=p)
+            point_sphere = trimesh.primitives.Sphere(radius=0.3, center=p)
             geometry.append(point_sphere)
 
     scene = trimesh.Scene(
@@ -111,7 +111,7 @@ def visualize(
 
     print("Rendering 2")
     geom = trimesh.voxel.ops.multibox(
-        empty, pitch=resolution, colors=[0.5, 0.5, 0.5, 0.5]
+        empty, pitch=resolution, colors=[0.5, 0.5, 0.5, 0.7]
     )
     scene = trimesh.Scene(camera=camera, geometry=[bbox, geom, camera_marker]+path_geom)
     scene.camera_transform = camera_transform
@@ -140,12 +140,24 @@ def update_freespace_by_subtraction(octree, aabb_min, aabb_max, resolution):
     return octree
 
 
-def calculate_metrics(reference, prediction, aabb_min, aabb_max, resolution):
+def calculate_metrics(
+    reference: Union[octomap.OcTree, octomap.SemanticOcTree], 
+    prediction: Union[octomap.OcTree, octomap.SemanticOcTree], 
+    aabb_min: list, 
+    aabb_max: list, 
+    resolution: float,
+    x_min=None, 
+    x_max=None, 
+    y_min=None, 
+    y_max=None, 
+    z_min=None, 
+    z_max=None
+) -> tuple:
     """Calculate the binary metrics
 
     Parameters
     ----------
-    reference: `Octomap`
+    reference: `OcTree`
         Reference octomap used as ground truth
     prediction: `Octomap`
         Predicted octomap to be evaluated
@@ -168,11 +180,25 @@ def calculate_metrics(reference, prediction, aabb_min, aabb_max, resolution):
         False negative
 
     """
+    if x_max is None:
+        x_max = aabb_max[0]
+    if y_max is None:
+        y_max = aabb_max[1]
+    if z_max is None:
+        z_max = aabb_max[2]
+    if x_min is None:
+        x_min = aabb_min[0]
+    if y_min is None:
+        y_min = aabb_min[1]
+    if z_min is None:
+        z_min = aabb_min[2]
+
+
     offset = resolution / 2
     TP, TN, FP, FN = 0, 0, 0, 0
-    for x in np.arange(aabb_min[0], aabb_max[0], resolution):
-        for y in np.arange(aabb_min[1], aabb_max[1], resolution):
-            for z in np.arange(aabb_min[2], aabb_max[2], resolution):
+    for x in np.arange(x_min, x_max, resolution):
+        for y in np.arange(y_min, y_max, resolution):
+            for z in np.arange(z_min, z_max, resolution):
                 key1 = reference.coordToKey(
                     np.array([x+offset, y+offset, z+offset]))
                 node1 = reference.search(key1)
@@ -221,6 +247,7 @@ def occupied_to_obstacles(occupied, resolution):
         coord_max = node + resolution
 
         coord = np.concatenate([coord_min, coord_max])
+
         obstacles.append(coord)
 
     return np.array(obstacles)

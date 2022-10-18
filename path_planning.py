@@ -93,7 +93,7 @@ def generate_candidate_points_from_free_voxels(
 
 def is_path_feasible(
     octree: Union[octomap.OcTree, octomap.SemanticOcTree],
-    path: list
+    path: list,
 ) -> bool:
     """Check the feasibility of the path in the given voxel map
 
@@ -108,19 +108,26 @@ def is_path_feasible(
     -------
     is_feasible: `bool`
         True if the path is feasible, i.e., it does not collide with any occupied voxels
+    end_point_list: `list`
+        List of voxel centroid points that the ray has hit
     
     """
+    is_feasible = True
+    end_point_list = []
     for i in range(len(path)-1):
-        if not is_line_feasible(octree, path[i], path[i+1]):
-            return False
+        is_feasible_tmp, end = is_line_feasible(
+            octree, path[i], path[i+1])
 
-    return True
+        if not is_feasible_tmp:
+            end_point_list.append(end)
+            is_feasible = False
 
+    return is_feasible, end_point_list
 
 def is_line_feasible(
     octree: Union[octomap.OcTree, octomap.SemanticOcTree],
     start_point: tuple,
-    end_point: tuple
+    end_point: tuple,
 ) -> bool:
     """Check the feasibility of the line in the given voxel map
 
@@ -144,14 +151,16 @@ def is_line_feasible(
 
     # Unit vector from the start to the end
     v = np_end_point - np_start_point
-    v /= np.linalg.norm(v)
+    v_norm = np.linalg.norm(v)
+    v /= v_norm
 
     end = np.array([0,0,0], dtype=np.float64)
-    octree.castRay(np_start_point, v, end)
+    end_tmp = np.array([0,0,0], dtype=np.float64)
+    octree.castRay(np_start_point, v, end, maxRange=v_norm)
 
-    print(end, np_end_point)
+    # print("start: {}, end: {}, hit: {}".format(np_start_point, np_end_point, end))
 
-    return True
+    return np.all(end == end_tmp), end
 
 
 def get_arguments():

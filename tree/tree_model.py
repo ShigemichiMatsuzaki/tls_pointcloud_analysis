@@ -265,13 +265,15 @@ class TreePointSegmener(object):
         """
         # Get CHM segmentation
         #  "markers": Markers yielded by watershed segmentation
-        chm_seg = self.chm_segmenter.do_segmentation(window_size=5)["markers"]
+        # chm_seg = self.chm_segmenter.do_segmentation(window_size=5)["markers"]
+        chm_seg = self.chm_segmenter.do_segmentation(window_size=5)["segments"]
 
         # For each segment, extract points and segment 
         for n in np.unique(chm_seg):
             ## Passthrough filtering by the bounding box of the segment
             if n == -1:
                 continue 
+
 
             # Roughly crop the point using a bounding box
             seg_region_indices = np.asarray(chm_seg==n).nonzero()
@@ -282,6 +284,10 @@ class TreePointSegmener(object):
 
             x_min, y_min = self.chm_segmenter.pixel_to_map((x_min, y_min))
             x_max, y_max = self.chm_segmenter.pixel_to_map((x_max, y_max))
+
+            tmp = y_min
+            y_min = y_max
+            y_max = tmp
 
             x_diff = x_max - x_min
             y_diff = y_max - y_min
@@ -300,6 +306,8 @@ class TreePointSegmener(object):
 
             if bbx_point.is_empty():
                 continue
+
+            # o3d.visualization.draw_geometries([bbx_point])
 
             trees = self.segment_trees(bbx_point, visualize=True)
 
