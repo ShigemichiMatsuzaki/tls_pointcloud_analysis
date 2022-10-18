@@ -38,7 +38,7 @@ def import_laz_to_o3d(filepath, voxel_size=0.1, chunked_read=True):
             [las['X'], las['Y'], las['Z']]) / 1000.0
         np_points = np_points.T
 
-    print(np_points.max(axis=0), np_points.min(axis=0))
+    print("[import_laz_to_o3d] max: {}, min: {}".format(np_points.max(axis=0), np_points.min(axis=0)))
 
     o3d_points = o3d.geometry.PointCloud()
     o3d_points.points = o3d.utility.Vector3dVector(np_points)
